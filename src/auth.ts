@@ -1,0 +1,58 @@
+import { FastifyRequest, FastifyReply } from "fastify";
+
+const VALID_TOKENS = new Map<string, { name: string; createdAt: number }>();
+
+// Initialize with a default token from env (for local dev)
+if (process.env.SCRAPER_API_TOKEN) {
+  VALID_TOKENS.set(process.env.SCRAPER_API_TOKEN, {
+    name: "default",
+    createdAt: Date.now(),
+  });
+}
+
+export function generateToken(): string {
+  return `scraper_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
+}
+
+export function registerToken(token: string, name: string): void {
+  VALID_TOKENS.set(token, {
+    name,
+    createdAt: Date.now(),
+  });
+}
+
+export function isValidToken(token: string | undefined): boolean {
+  if (!token) return false;
+  const entry = VALID_TOKENS.get(token);
+  if (!entry) return false;
+
+  // Tokens expire after 24 hours
+  const isExpired = Date.now() - entry.createdAt > 24 * 60 * 60 * 1000;
+  if (isExpired) {
+    VALID_TOKENS.delete(token);
+    return false;
+  }
+
+  return true;
+}
+
+export async function authMiddleware(
+  request: FastifyRequest,
+  reply: FastifyReply
+): Promise<void> {
+  const authHeader = request.headers.authorization;
+  const token = authHeader?.replace("Bearer ", "");
+
+  if (!isValidToken(token)) {
+    reply.status(401).send({
+      error: "Unauthorized",
+      message: "Missing or invalid API token",
+    });
+  }
+}
+
+export function getTokenFromRequest(request: FastifyRequest): string | null {
+  const authHeader = request.headers.authorization;
+  const token = authHeader?.replace("Bearer ", "");
+  return token || null;
+}

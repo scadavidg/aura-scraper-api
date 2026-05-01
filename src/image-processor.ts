@@ -160,6 +160,61 @@ export async function processAndUploadImage(imageUrl: string, productName: strin
 
   } catch (error) {
     console.error("Error processing image:", error);
-    return imageUrl; 
+    return imageUrl;
+  }
+}
+
+/**
+ * Processes image from data-uri or base64 string (from client upload).
+ * Validates size and optimizes before returning data-uri.
+ */
+export async function validateAndOptimizeImageData(
+  imageDataUri: string,
+  productName: string
+): Promise<{
+  optimized: boolean;
+  dataUri: string;
+  originalSizeKB: number;
+  optimizedSizeKB: number;
+}> {
+  try {
+    // Parse data-uri
+    const matches = imageDataUri.match(/^data:([^;]+);base64,(.+)$/);
+    if (!matches) {
+      throw new Error("Invalid data-uri format");
+    }
+
+    const base64Data = matches[2];
+    const imageBuffer = Buffer.from(base64Data, "base64");
+    const originalSizeKB = Math.round(imageBuffer.length / 1024);
+
+    // Size validation
+    if (originalSizeKB > 5000) {
+      throw new Error(`Image too large: ${originalSizeKB}KB (max 5MB)`);
+    }
+
+    console.log(`Validating image for: ${productName} (${originalSizeKB}KB)`);
+
+    // Process image
+    const squaredBuffer = await processToSquare(imageBuffer);
+    const optimizedBuffer = await convertToOptimizedWebP(squaredBuffer);
+    const optimizedSizeKB = Math.round(optimizedBuffer.length / 1024);
+
+    const optimizedDataUri = `data:image/webp;base64,${optimizedBuffer.toString("base64")}`;
+    const wasOptimized = optimizedSizeKB < originalSizeKB;
+
+    console.log(
+      `Image processed: ${originalSizeKB}KB → ${optimizedSizeKB}KB${wasOptimized ? " (optimized)" : ""}`
+    );
+
+    return {
+      optimized: wasOptimized,
+      dataUri: optimizedDataUri,
+      originalSizeKB,
+      optimizedSizeKB,
+    };
+  } catch (error) {
+    console.error("Error validating/optimizing image:", error);
+    throw error;
   }
 }
