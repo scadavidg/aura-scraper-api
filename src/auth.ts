@@ -2,14 +2,6 @@ import { FastifyRequest, FastifyReply } from "fastify";
 
 const VALID_TOKENS = new Map<string, { name: string; createdAt: number }>();
 
-// Initialize with a default token from env (for local dev)
-if (process.env.SCRAPER_API_TOKEN) {
-  VALID_TOKENS.set(process.env.SCRAPER_API_TOKEN, {
-    name: "default",
-    createdAt: Date.now(),
-  });
-}
-
 export function generateToken(): string {
   return `scraper_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
 }

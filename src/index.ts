@@ -12,10 +12,15 @@ import {
   deleteSession,
 } from "./session-store";
 import { mapPerfumeToMedusaProduct } from "./medusa-mapper";
-import { authMiddleware, isValidToken } from "./auth";
 import { validateAndOptimizeImageData } from "./image-processor";
+import { authMiddleware, isValidToken, registerToken } from "./auth";
 
 dotenv.config();
+
+// Register token from env after dotenv is configured
+if (process.env.SCRAPER_API_TOKEN) {
+  registerToken(process.env.SCRAPER_API_TOKEN, "default");
+}
 
 const server = fastify({ logger: true });
 
