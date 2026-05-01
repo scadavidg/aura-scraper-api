@@ -30,11 +30,12 @@ async function getFragranticaImage(perfumeName: string): Promise<string | undefi
     
     // Tavily retorna un array de imágenes. Buscamos la que parezca más relevante de Fragrantica.
     // Priorizamos imágenes que vengan de fimgs.net (servidor de imágenes de Fragrantica)
-    const fragranticaImg = response.images.find(img => 
-      typeof img === 'string' ? img.includes('fimgs.net') : (img as any).url?.includes('fimgs.net')
+    const images = response.images as any[];
+    const fragranticaImg = images.find((img: any) =>
+      typeof img === 'string' ? img.includes('fimgs.net') : img?.url?.includes('fimgs.net')
     );
 
-    const imageUrl = typeof fragranticaImg === 'string' ? fragranticaImg : (fragranticaImg as any)?.url;
+    const imageUrl = typeof fragranticaImg === 'string' ? fragranticaImg : fragranticaImg?.url;
 
     if (imageUrl) {
       console.log(`Imagen encontrada vía Tavily: ${imageUrl}`);
@@ -42,9 +43,9 @@ async function getFragranticaImage(perfumeName: string): Promise<string | undefi
     }
 
     // Fallback: primera imagen que encuentre Tavily si no hay de fimgs.net
-    if (response.images.length > 0) {
-      const firstImg = response.images[0];
-      return typeof firstImg === 'string' ? firstImg : (firstImg as any)?.url;
+    if (images.length > 0) {
+      const firstImg = images[0];
+      return typeof firstImg === 'string' ? firstImg : firstImg?.url;
     }
 
   } catch (error) {
