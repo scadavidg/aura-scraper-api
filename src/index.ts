@@ -17,6 +17,7 @@ import { authMiddleware, isValidToken, registerToken } from "./auth";
 
 dotenv.config();
 
+// ── API Test Push ──────────────────────────────────────────────────────────
 // Register token from env after dotenv is configured
 if (process.env.SCRAPER_API_TOKEN) {
   registerToken(process.env.SCRAPER_API_TOKEN, "default");
