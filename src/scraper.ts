@@ -18,40 +18,36 @@ const openrouter = createOpenAI({
 
 const tvly = tavily({ apiKey: process.env.TAVILY_API_KEY });
 
-async function getFragranticaImage(perfumeName: string): Promise<string | undefined> {
-  console.log(`Buscando imagen para: ${perfumeName} con Tavily Researcher...`);
+async function getFragranticaImages(perfumeName: string): Promise<string[]> {
+  console.log(`Buscando imágenes para: ${perfumeName} con Tavily Researcher...`);
   try {
     // Usar Tavily para buscar imágenes directamente
     const response = await tvly.search(`site:fragrantica.es perfume ${perfumeName}`, {
       searchDepth: "advanced",
       includeImages: true,
-      maxResults: 5
+      maxResults: 10
     });
-    
-    // Tavily retorna un array de imágenes. Buscamos la que parezca más relevante de Fragrantica.
-    // Priorizamos imágenes que vengan de fimgs.net (servidor de imágenes de Fragrantica)
+
+    // Extraer URLs de imágenes
     const images = response.images as any[];
-    const fragranticaImg = images.find((img: any) =>
-      typeof img === 'string' ? img.includes('fimgs.net') : img?.url?.includes('fimgs.net')
-    );
+    const imageUrls: string[] = [];
 
-    const imageUrl = typeof fragranticaImg === 'string' ? fragranticaImg : fragranticaImg?.url;
-
-    if (imageUrl) {
-      console.log(`Imagen encontrada vía Tavily: ${imageUrl}`);
-      return imageUrl;
+    for (const img of images) {
+      const url = typeof img === 'string' ? img : img?.url;
+      if (url && imageUrls.length < 3) {
+        imageUrls.push(url);
+      }
     }
 
-    // Fallback: primera imagen que encuentre Tavily si no hay de fimgs.net
-    if (images.length > 0) {
-      const firstImg = images[0];
-      return typeof firstImg === 'string' ? firstImg : firstImg?.url;
+    if (imageUrls.length > 0) {
+      console.log(`${imageUrls.length} imagen(es) encontrada(s) vía Tavily`);
+      return imageUrls;
     }
 
   } catch (error) {
-    console.error("Error obteniendo imagen con Tavily:", error);
+    console.error("Error obteniendo imágenes con Tavily:", error);
   }
-  return undefined;
+  return [];
 }
 
 export async function scrapePerfumePage(url: string, directImageUrl?: string) {
@@ -130,23 +126,23 @@ Redacta una descripción de marketing de 2 a 3 párrafos cortos. Debe ser sofist
     technicalData.descripcion = creativeDescription;
 
     // --- FASE 3: THE RESEARCHER (Tavily o Direct Image) ---
-    // Búsqueda de imagen de alta calidad o uso de URL directa
-    // NOTA: NO procesamos la imagen aquí. Solo retornamos la URL tal como viene.
+    // Búsqueda de imágenes para que el usuario seleccione una
+    // NOTA: NO procesamos las imágenes aquí. Solo retornamos las URLs tal como vienen.
     // El procesamiento (descarga, optimización, S3 upload) ocurre en /confirm-scrape
     // cuando el usuario confirma los datos.
-    if (technicalData.nombre) {
-      let bestImageUrl = directImageUrl;
+    const possibleImages: string[] = [];
 
-      if (!bestImageUrl) {
-        bestImageUrl = await getFragranticaImage(technicalData.nombre);
-      } else {
-        console.log(`Usando URL de imagen directa proporcionada: ${bestImageUrl}`);
-      }
+    if (directImageUrl) {
+      possibleImages.push(directImageUrl);
+      console.log(`Usando URL de imagen directa proporcionada: ${directImageUrl}`);
+    } else if (technicalData.nombre) {
+      const tavilyImages = await getFragranticaImages(technicalData.nombre);
+      possibleImages.push(...tavilyImages);
+    }
 
-      if (bestImageUrl) {
-        technicalData.image = bestImageUrl;
-        console.log(`Imagen encontrada (sin procesar, para preview): ${bestImageUrl}`);
-      }
+    if (possibleImages.length > 0) {
+      (technicalData as any).possibleImages = possibleImages;
+      console.log(`${possibleImages.length} imagen(es) disponible(s) para preview`);
     }
 
     return technicalData;

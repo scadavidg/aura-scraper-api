@@ -17,7 +17,8 @@ export const PerfumeSchema = z.object({
   notas: z.string().optional().describe("Notas olfativas completas, separadas por comas"),
   año: z.number().optional().describe("Año de lanzamiento"),
   categoria: z.string().optional().describe("Categoría principal, ej. 'Nicho', 'Diseñador'"),
-  image: z.string().optional().describe("URL de la imagen principal del perfume")
+  image: z.string().optional().describe("URL de la imagen principal del perfume"),
+  possibleImages: z.array(z.string()).optional().describe("Array de imágenes posibles encontradas con Tavily para que el usuario seleccione una")
 });
 
 export type Perfume = z.infer<typeof PerfumeSchema>;
