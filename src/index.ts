@@ -12,7 +12,7 @@ import {
   deleteSession,
 } from "./session-store";
 import { mapPerfumeToMedusaProduct } from "./medusa-mapper";
-import { validateAndOptimizeImageData } from "./image-processor";
+import { validateAndOptimizeImageData, processAndUploadImage } from "./image-processor";
 import { authMiddleware, isValidToken, registerToken } from "./auth";
 
 dotenv.config();
@@ -103,18 +103,31 @@ server.post("/confirm-scrape", async (request, reply) => {
     const confirmedData = validationResult.data;
 
     // Process and optimize image if provided
-    if (confirmedData.image && confirmedData.image.startsWith("data:")) {
+    if (confirmedData.image) {
       try {
-        server.log.info(`Optimizing image for: ${confirmedData.nombre}`);
-        const imageResult = await validateAndOptimizeImageData(
-          confirmedData.image,
-          confirmedData.nombre
-        );
-        confirmedData.image = imageResult.dataUri;
+        if (confirmedData.image.startsWith("data:")) {
+          // Case 1: User uploaded image as data-uri
+          server.log.info(`Optimizing user-uploaded image for: ${confirmedData.nombre}`);
+          const imageResult = await validateAndOptimizeImageData(
+            confirmedData.image,
+            confirmedData.nombre
+          );
+          confirmedData.image = imageResult.dataUri;
 
-        server.log.info(
-          `Image optimization: ${imageResult.originalSizeKB}KB → ${imageResult.optimizedSizeKB}KB`
-        );
+          server.log.info(
+            `Image optimization: ${imageResult.originalSizeKB}KB → ${imageResult.optimizedSizeKB}KB`
+          );
+        } else {
+          // Case 2: Image URL from Tavily search or direct URL - process and upload to S3
+          server.log.info(`Processing and uploading image URL for: ${confirmedData.nombre}`);
+          const s3Url = await processAndUploadImage(
+            confirmedData.image,
+            confirmedData.nombre
+          );
+          confirmedData.image = s3Url;
+
+          server.log.info(`Image uploaded to S3: ${s3Url}`);
+        }
       } catch (imgError: any) {
         return reply.status(400).send({
           error: "Image processing failed",

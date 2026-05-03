@@ -131,6 +131,9 @@ Redacta una descripción de marketing de 2 a 3 párrafos cortos. Debe ser sofist
 
     // --- FASE 3: THE RESEARCHER (Tavily o Direct Image) ---
     // Búsqueda de imagen de alta calidad o uso de URL directa
+    // NOTA: NO procesamos la imagen aquí. Solo retornamos la URL tal como viene.
+    // El procesamiento (descarga, optimización, S3 upload) ocurre en /confirm-scrape
+    // cuando el usuario confirma los datos.
     if (technicalData.nombre) {
       let bestImageUrl = directImageUrl;
 
@@ -139,15 +142,10 @@ Redacta una descripción de marketing de 2 a 3 párrafos cortos. Debe ser sofist
       } else {
         console.log(`Usando URL de imagen directa proporcionada: ${bestImageUrl}`);
       }
-      
+
       if (bestImageUrl) {
-        try {
-          const s3Url = await processAndUploadImage(bestImageUrl, technicalData.nombre);
-          technicalData.image = s3Url;
-        } catch (err) {
-          console.error("Error en pipeline de imagen, conservando URL original.", err);
-          technicalData.image = bestImageUrl;
-        }
+        technicalData.image = bestImageUrl;
+        console.log(`Imagen encontrada (sin procesar, para preview): ${bestImageUrl}`);
       }
     }
 
