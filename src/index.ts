@@ -102,6 +102,14 @@ server.post("/confirm-scrape", async (request, reply) => {
 
     const confirmedData = validationResult.data;
 
+    // Validate image is present - required field
+    if (!confirmedData.image || confirmedData.image.trim() === "") {
+      return reply.status(400).send({
+        error: "Image is required",
+        message: "A product must have an image. Please upload or select an image before confirming.",
+      });
+    }
+
     // Process and optimize image if provided
     if (confirmedData.image) {
       try {
@@ -186,6 +194,14 @@ server.post("/create-product", async (request, reply) => {
     if (!session.confirmedData) {
       return reply.status(400).send({
         error: "No confirmed data in session. Call /confirm-scrape first.",
+      });
+    }
+
+    // Validate image exists (final safety check)
+    if (!session.confirmedData.image || session.confirmedData.image.trim() === "") {
+      return reply.status(400).send({
+        error: "Product image is missing",
+        message: "Cannot create product without an image.",
       });
     }
 
