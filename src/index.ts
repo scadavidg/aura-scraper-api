@@ -114,6 +114,7 @@ server.post("/confirm-scrape", async (request, reply) => {
     // Process and optimize image if provided
     if (confirmedData.image) {
       try {
+        const originalImage = confirmedData.image;
         if (confirmedData.image.startsWith("data:")) {
           // Case 1: User uploaded image as data-uri
           server.log.info(`Optimizing user-uploaded image for: ${confirmedData.nombre}`);
@@ -122,6 +123,7 @@ server.post("/confirm-scrape", async (request, reply) => {
             confirmedData.nombre
           );
           confirmedData.image = imageResult.dataUri;
+          confirmedData.sourceImageUrl = "manual upload";
 
           server.log.info(
             `Image optimization: ${imageResult.originalSizeKB}KB → ${imageResult.optimizedSizeKB}KB`
@@ -134,6 +136,7 @@ server.post("/confirm-scrape", async (request, reply) => {
             confirmedData.nombre
           );
           confirmedData.image = s3Url;
+          confirmedData.sourceImageUrl = originalImage;
 
           server.log.info(`Image uploaded to S3: ${s3Url}`);
         }
@@ -206,23 +209,45 @@ server.post("/create-product", async (request, reply) => {
       });
     }
 
-    // Map to Medusa format
-    const medusaProduct = mapPerfumeToMedusaProduct(session.confirmedData);
+    const useNewEndpoint = process.env.USE_NEW_IMPORT_ENDPOINT === "true";
+    let response;
 
-    // Call Medusa backend
-    const medusaUrl = `${process.env.MEDUSA_BACKEND_URL}/store/price-manager/products`;
-    const medusaResponse = await fetch(medusaUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-publishable-api-key": process.env.MEDUSA_PUBLISHABLE_API_KEY || "",
-        "x-price-manager-key": process.env.PRICE_MANAGER_API_KEY || "",
-      },
-      body: JSON.stringify(medusaProduct),
-    });
+    if (useNewEndpoint) {
+      // NEW: Use /store/products/import
+      // Filter out possibleImages as it's not needed by the backend
+      const { possibleImages, ...perfumeData } = session.confirmedData;
+      
+      const medusaUrl = `${process.env.MEDUSA_BACKEND_URL}/store/products/import`;
+      server.log.info(`Using new import endpoint: ${medusaUrl}`);
+      
+      response = await fetch(medusaUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-publishable-api-key": process.env.MEDUSA_PUBLISHABLE_API_KEY || "",
+          "x-price-manager-key": process.env.PRICE_MANAGER_API_KEY || "",
+        },
+        body: JSON.stringify({ perfumes: [perfumeData] }),
+      });
+    } else {
+      // OLD: Use /store/price-manager/products (legacy batch)
+      const medusaProduct = mapPerfumeToMedusaProduct(session.confirmedData);
+      const medusaUrl = `${process.env.MEDUSA_BACKEND_URL}/store/price-manager/products`;
+      server.log.info(`Using legacy endpoint: ${medusaUrl}`);
 
-    if (!medusaResponse.ok) {
-      const errorData = await medusaResponse.json().catch(() => ({}));
+      response = await fetch(medusaUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-publishable-api-key": process.env.MEDUSA_PUBLISHABLE_API_KEY || "",
+          "x-price-manager-key": process.env.PRICE_MANAGER_API_KEY || "",
+        },
+        body: JSON.stringify(medusaProduct),
+      });
+    }
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
       server.log.error("Medusa error:", errorData);
       return reply.status(502).send({
         error: "Failed to create product in Medusa",
@@ -230,20 +255,34 @@ server.post("/create-product", async (request, reply) => {
       });
     }
 
-    const createdProduct = await medusaResponse.json();
+    const createdProduct = await response.json();
 
     // Clean up session
     deleteSession(sessionId);
 
-    server.log.info(
-      `Product created successfully: ${createdProduct.product?.id || createdProduct.id}`
-    );
+    if (useNewEndpoint) {
+      const result = createdProduct.results?.[0];
+      server.log.info(
+        `Product processed via new import: ${result?.handle} (${result?.action})`
+      );
 
-    return reply.status(201).send({
-      success: true,
-      productId: createdProduct.product?.id || createdProduct.id,
-      message: "Product created successfully",
-    });
+      return reply.status(201).send({
+        success: true,
+        productId: result?.product_id,
+        action: result?.action,
+        message: `Product ${result?.action} successfully via new import`,
+      });
+    } else {
+      server.log.info(
+        `Product created successfully via legacy: ${createdProduct.product?.id || createdProduct.id}`
+      );
+
+      return reply.status(201).send({
+        success: true,
+        productId: createdProduct.product?.id || createdProduct.id,
+        message: "Product created successfully via legacy",
+      });
+    }
   } catch (error) {
     server.log.error(error);
     return reply.status(500).send({ error: "Failed to create product" });

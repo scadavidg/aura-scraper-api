@@ -145,10 +145,13 @@ Redacta una descripción de marketing de 2 a 3 párrafos cortos. Debe ser sofist
       console.log(`${possibleImages.length} imagen(es) disponible(s) para preview`);
     }
 
+    (technicalData as any).sourceUrl = url;
+
     return technicalData;
     
   } finally {
     await browser.close();
   }
 }
+
 

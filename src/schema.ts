@@ -18,7 +18,9 @@ export const PerfumeSchema = z.object({
   año: z.number().optional().describe("Año de lanzamiento"),
   categoria: z.string().optional().describe("Categoría principal, ej. 'Nicho', 'Diseñador'"),
   image: z.string().optional().describe("URL de la imagen principal del perfume"),
-  possibleImages: z.array(z.string()).optional().describe("Array de imágenes posibles encontradas con Tavily para que el usuario seleccione una")
+  possibleImages: z.array(z.string()).optional().describe("Array de imágenes posibles encontradas con Tavily para que el usuario seleccione una"),
+  sourceUrl: z.string().optional().describe("URL de la página de donde se extrajo el perfume"),
+  sourceImageUrl: z.string().optional().describe("URL original de la imagen antes de optimizar, o 'manual upload'")
 });
 
 export type Perfume = z.infer<typeof PerfumeSchema>;
