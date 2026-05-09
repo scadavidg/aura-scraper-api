@@ -29,7 +29,7 @@ export function mapPerfumeToMedusaProduct(perfume: Perfume) {
         },
       ] : [],
       manage_inventory: true,
-      inventory_quantity: perfume.disponibilidad[index] === "Disponible" ? 10 : 0,
+      inventory_quantity: perfume.disponibilidad[index] === "Disponible" ? 100 : 0,
     })),
     tags: buildTags(perfume),
     categories: [],

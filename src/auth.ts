@@ -15,10 +15,16 @@ export function registerToken(token: string, name: string): void {
 
 export function isValidToken(token: string | undefined): boolean {
   if (!token) return false;
+
+  // Master static token check
+  if (process.env.SCRAPER_API_TOKEN && token === process.env.SCRAPER_API_TOKEN) {
+    return true;
+  }
+
   const entry = VALID_TOKENS.get(token);
   if (!entry) return false;
 
-  // Tokens expire after 24 hours
+  // Dynamic tokens expire after 24 hours
   const isExpired = Date.now() - entry.createdAt > 24 * 60 * 60 * 1000;
   if (isExpired) {
     VALID_TOKENS.delete(token);
