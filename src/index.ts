@@ -257,9 +257,6 @@ server.post("/create-product", async (request, reply) => {
 
     const createdProduct = await response.json();
 
-    // Clean up session
-    deleteSession(sessionId);
-
     if (useNewEndpoint) {
       const result = createdProduct.results?.[0];
       server.log.info(
