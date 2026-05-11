@@ -75,22 +75,19 @@ server.post("/confirm-scrape", async (request, reply) => {
     }
 
     const { sessionId, data } = request.body as {
-      sessionId: string;
+      sessionId?: string;
       data: Perfume;
     };
 
-    if (!sessionId || !data) {
+    if (!data) {
       return reply.status(400).send({
-        error: "sessionId and data are required",
+        error: "data is required",
       });
     }
 
-    const session = getSession(sessionId);
-    if (!session) {
-      return reply.status(404).send({
-        error: "Session not found or expired",
-      });
-    }
+    // Session lookup is best-effort — sessions may have expired or be absent
+    // when resuming a Firebase draft across scraper restarts.
+    const session = sessionId ? getSession(sessionId) : null;
 
     // Validate data against schema
     const validationResult = PerfumeSchema.safeParse(data);
@@ -148,15 +145,12 @@ server.post("/confirm-scrape", async (request, reply) => {
       }
     }
 
-    // Update session with confirmed data
-    const updated = updateSessionConfirmation(sessionId, confirmedData);
-    if (!updated) {
-      return reply.status(404).send({
-        error: "Failed to update session",
-      });
+    // Update session if it exists (best-effort — may be absent for resumed drafts)
+    if (session && sessionId) {
+      updateSessionConfirmation(sessionId, confirmedData);
     }
 
-    server.log.info(`Scrape session ${sessionId} confirmed`);
+    server.log.info(`Scrape confirmed${sessionId ? ` (session ${sessionId})` : " (sessionless)"}`);
 
     return reply.status(200).send({
       success: true,
