@@ -174,29 +174,33 @@ server.post("/create-product", async (request, reply) => {
       });
     }
 
-    const { sessionId } = request.body as { sessionId: string };
+    const { sessionId, data: directData } = request.body as {
+      sessionId?: string;
+      data?: Perfume;
+    };
 
-    if (!sessionId) {
-      return reply.status(400).send({
-        error: "sessionId is required",
-      });
-    }
+    // Resolve confirmed data: prefer inline data (stateless), fall back to session
+    let confirmedData: Perfume | undefined;
 
-    const session = getSession(sessionId);
-    if (!session) {
-      return reply.status(404).send({
-        error: "Session not found or expired",
-      });
-    }
-
-    if (!session.confirmedData) {
-      return reply.status(400).send({
-        error: "No confirmed data in session. Call /confirm-scrape first.",
-      });
+    if (directData) {
+      confirmedData = directData;
+    } else if (sessionId) {
+      const session = getSession(sessionId);
+      if (!session) {
+        return reply.status(404).send({ error: "Session not found or expired" });
+      }
+      if (!session.confirmedData) {
+        return reply.status(400).send({
+          error: "No confirmed data in session. Call /confirm-scrape first.",
+        });
+      }
+      confirmedData = session.confirmedData;
+    } else {
+      return reply.status(400).send({ error: "Provide either data or sessionId" });
     }
 
     // Validate image exists (final safety check)
-    if (!session.confirmedData.image || session.confirmedData.image.trim() === "") {
+    if (!confirmedData.image || confirmedData.image.trim() === "") {
       return reply.status(400).send({
         error: "Product image is missing",
         message: "Cannot create product without an image.",
@@ -209,7 +213,7 @@ server.post("/create-product", async (request, reply) => {
     if (useNewEndpoint) {
       // NEW: Use /store/products/import
       // Filter out possibleImages as it's not needed by the backend
-      const { possibleImages, ...perfumeData } = session.confirmedData;
+      const { possibleImages, ...perfumeData } = confirmedData;
       
       const medusaUrl = `${process.env.MEDUSA_BACKEND_URL}/store/products/import`;
       server.log.info(`Using new import endpoint: ${medusaUrl}`);
@@ -225,7 +229,7 @@ server.post("/create-product", async (request, reply) => {
       });
     } else {
       // OLD: Use /store/price-manager/products (legacy batch)
-      const medusaProduct = mapPerfumeToMedusaProduct(session.confirmedData);
+      const medusaProduct = mapPerfumeToMedusaProduct(confirmedData);
       const medusaUrl = `${process.env.MEDUSA_BACKEND_URL}/store/price-manager/products`;
       server.log.info(`Using legacy endpoint: ${medusaUrl}`);
 
