@@ -290,6 +290,7 @@ server.post("/create-product", async (request, reply) => {
       return reply.status(201).send({
         success: true,
         productId: result?.product_id,
+        handle: result?.handle,
         action: result?.action,
         message: `Product ${result?.action} successfully via new import`,
       });
