@@ -50,6 +50,20 @@ server.post("/scrape", async (request, reply) => {
     server.log.info(`Scraping started for: ${url}${imageUrl ? ` with direct image: ${imageUrl}` : ''}`);
     const scrapedData = await scrapePerfumePage(url, imageUrl);
 
+    // Safety net: ensure precios >= precios_descuento per variant.
+    // LLMs occasionally invert compare_at_price / price despite prompt instructions.
+    if (Array.isArray(scrapedData.precios) && Array.isArray(scrapedData.precios_descuento)) {
+      for (let i = 0; i < scrapedData.precios.length; i++) {
+        const normal = scrapedData.precios[i];
+        const desc = scrapedData.precios_descuento[i];
+        if (desc != null && normal != null && desc > normal) {
+          scrapedData.precios[i] = desc;
+          scrapedData.precios_descuento[i] = normal;
+          server.log.info(`[price-fix] variant ${i}: swapped inverted prices (${normal} ↔ ${desc})`);
+        }
+      }
+    }
+
     // Create session to track this scrape
     const sessionId = createSession(scrapedData);
 

@@ -101,11 +101,21 @@ JSON Variantes: ${variantData || 'No disponible'}
 Texto de la página: ${textContent}
 
 INSTRUCCIONES:
-1. VARIANTES Y PRECIOS: Extrae variantes, precios (dividir entre 100 si es Shopify) y notas. 
-   - REGLA CRÍTICA: Excluye explícitamente CUALQUIER variante que contenga las palabras 'decant', 'Decant', 'tester', 'Tester' o 'TESTER'. Si una variante es un decant o un tester, no la incluyas ni a ella ni a su precio ni a su disponibilidad. Ejemplos a ignorar: "100 ML (Tester)", "Decant 5ml", "TESTER 100ML".
-2. DISPONIBILIDAD: Determina si cada variante está 'Disponible' o 'Agotado'. En Shopify, busca el campo 'available' (true=Disponible, false=Agotado). En el texto, busca menciones de 'Agotado' o botones deshabilitados.
-3. Genera un handle único.
-4. El campo 'descripcion' déjalo como un string vacío por ahora.
+1. VARIANTES Y PRECIOS (leer con cuidado):
+   - En Shopify los precios vienen en centavos — SIEMPRE dividir entre 100.
+   - 'price' = precio actual que paga el cliente (el MENOR cuando hay descuento).
+   - 'compare_at_price' = precio original tachado (el MAYOR, precio sin descuento).
+   - Regla de mapeo:
+       * Si compare_at_price > price → hay descuento:
+           precios[i]           = compare_at_price / 100  (precio normal, el mayor)
+           precios_descuento[i] = price / 100             (precio rebajado, el menor)
+       * Si compare_at_price == price, es null o es 0 → sin descuento:
+           precios[i]           = price / 100
+           precios_descuento[i] = price / 100
+   - REGLA CRÍTICA: Excluye CUALQUIER variante con las palabras 'decant', 'Decant', 'tester', 'Tester' o 'TESTER'.
+2. DISPONIBILIDAD: En Shopify busca el campo 'available' (true=Disponible, false=Agotado). En el texto, busca 'Agotado' o botones deshabilitados.
+3. Genera un handle único en minúsculas con guiones.
+4. El campo 'descripcion' déjalo como string vacío por ahora.
 5. Retorna 4 arrays del mismo tamaño: 'variantes', 'precios', 'precios_descuento' y 'disponibilidad'.`
     });
 
