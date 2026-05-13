@@ -222,14 +222,15 @@ server.post("/create-product", async (request, reply) => {
     }
 
     const useNewEndpoint = process.env.USE_NEW_IMPORT_ENDPOINT === "true";
+    const medusaBase = (process.env.MEDUSA_BACKEND_URL || "").replace(/\/$/, "");
     let response;
 
     if (useNewEndpoint) {
       // NEW: Use /store/products/import
       // Filter out possibleImages as it's not needed by the backend
       const { possibleImages, ...perfumeData } = confirmedData;
-      
-      const medusaUrl = `${process.env.MEDUSA_BACKEND_URL}/store/products/import`;
+
+      const medusaUrl = `${medusaBase}/store/products/import`;
       server.log.info(`Using new import endpoint: ${medusaUrl}`);
       
       response = await fetch(medusaUrl, {
@@ -244,7 +245,7 @@ server.post("/create-product", async (request, reply) => {
     } else {
       // OLD: Use /store/price-manager/products (legacy batch)
       const medusaProduct = mapPerfumeToMedusaProduct(confirmedData);
-      const medusaUrl = `${process.env.MEDUSA_BACKEND_URL}/store/price-manager/products`;
+      const medusaUrl = `${medusaBase}/store/price-manager/products`;
       server.log.info(`Using legacy endpoint: ${medusaUrl}`);
 
       response = await fetch(medusaUrl, {
