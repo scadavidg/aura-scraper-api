@@ -271,6 +271,17 @@ server.post("/create-product", async (request, reply) => {
 
     if (useNewEndpoint) {
       const result = createdProduct.results?.[0];
+
+      // Surface workflow errors even when Medusa returns 200
+      if (!result?.product_id || (result?.errors?.length > 0)) {
+        const errMsg = result?.errors?.[0] || "Workflow returned no product_id";
+        server.log.error("Medusa workflow error:", errMsg, result);
+        return reply.status(502).send({
+          error: "Failed to create product in Medusa",
+          details: errMsg,
+        });
+      }
+
       server.log.info(
         `Product processed via new import: ${result?.handle} (${result?.action})`
       );
