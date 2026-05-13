@@ -270,23 +270,33 @@ server.post("/create-product", async (request, reply) => {
 
     const createdProduct = await response.json();
 
-    // Build storefront URL from perfume data (categoria + genero + handle)
-    const buildStorefrontUrl = (handle: string): string | null => {
+    // Build storefront URL by fetching actual category handles from Medusa
+    // (mirrors frontend getProductUrl logic: /productos/{cat1}/{cat2}/{handle})
+    const buildStorefrontUrl = async (productId: string, handle: string): Promise<string | null> => {
       const base = process.env.STOREFRONT_URL;
       if (!base) return null;
-      const norm = (s: string) =>
-        s.toLowerCase()
-          .normalize("NFD")
-          .replace(/[̀-ͯ]/g, "")
-          .replace(/[^a-z0-9\s-]/g, "")
-          .trim()
-          .replace(/\s+/g, "-");
-      const categoria = confirmedData.categoria ? norm(confirmedData.categoria) : null;
-      const genero = confirmedData.genero ? norm(confirmedData.genero) : null;
-      const segments = [base.replace(/\/$/, ""), "co", "productos", categoria, genero, handle]
-        .filter(Boolean)
-        .join("/");
-      return segments;
+      const baseClean = base.replace(/\/$/, "");
+      const fallback = `${baseClean}/co/productos/${handle}`;
+      try {
+        const productRes = await fetch(
+          `${medusaBase}/store/price-manager/products/${productId}`,
+          {
+            headers: {
+              "x-price-manager-key": process.env.PRICE_MANAGER_API_KEY || "",
+              "x-publishable-api-key": process.env.MEDUSA_PUBLISHABLE_API_KEY || "",
+            },
+          }
+        );
+        if (!productRes.ok) return fallback;
+        const product = await productRes.json();
+        const categoryHandles: string[] = (product.categories || [])
+          .map((c: any) => c.handle)
+          .filter((h: any) => typeof h === "string" && h.trim());
+        if (categoryHandles.length === 0) return fallback;
+        return `${baseClean}/co/productos/${categoryHandles.join("/")}/${handle}`;
+      } catch {
+        return fallback;
+      }
     };
 
     if (useNewEndpoint) {
@@ -303,15 +313,16 @@ server.post("/create-product", async (request, reply) => {
       }
 
       const handle = result?.handle || confirmedData.handle;
+      const productId = result?.product_id;
       server.log.info(
         `Product processed via new import: ${handle} (${result?.action})`
       );
 
       return reply.status(201).send({
         success: true,
-        productId: result?.product_id,
+        productId,
         handle,
-        storefrontUrl: buildStorefrontUrl(handle),
+        storefrontUrl: await buildStorefrontUrl(productId, handle),
         action: result?.action,
         message: `Product ${result?.action} successfully via new import`,
       });
@@ -324,7 +335,7 @@ server.post("/create-product", async (request, reply) => {
         success: true,
         productId: pid,
         handle,
-        storefrontUrl: buildStorefrontUrl(handle),
+        storefrontUrl: await buildStorefrontUrl(pid, handle),
         message: "Product created successfully via legacy",
       });
     }
