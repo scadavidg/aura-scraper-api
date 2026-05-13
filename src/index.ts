@@ -270,6 +270,25 @@ server.post("/create-product", async (request, reply) => {
 
     const createdProduct = await response.json();
 
+    // Build storefront URL from perfume data (categoria + genero + handle)
+    const buildStorefrontUrl = (handle: string): string | null => {
+      const base = process.env.STOREFRONT_URL;
+      if (!base) return null;
+      const norm = (s: string) =>
+        s.toLowerCase()
+          .normalize("NFD")
+          .replace(/[̀-ͯ]/g, "")
+          .replace(/[^a-z0-9\s-]/g, "")
+          .trim()
+          .replace(/\s+/g, "-");
+      const categoria = confirmedData.categoria ? norm(confirmedData.categoria) : null;
+      const genero = confirmedData.genero ? norm(confirmedData.genero) : null;
+      const segments = [base.replace(/\/$/, ""), "co", "productos", categoria, genero, handle]
+        .filter(Boolean)
+        .join("/");
+      return segments;
+    };
+
     if (useNewEndpoint) {
       const result = createdProduct.results?.[0];
 
@@ -283,25 +302,29 @@ server.post("/create-product", async (request, reply) => {
         });
       }
 
+      const handle = result?.handle || confirmedData.handle;
       server.log.info(
-        `Product processed via new import: ${result?.handle} (${result?.action})`
+        `Product processed via new import: ${handle} (${result?.action})`
       );
 
       return reply.status(201).send({
         success: true,
         productId: result?.product_id,
-        handle: result?.handle,
+        handle,
+        storefrontUrl: buildStorefrontUrl(handle),
         action: result?.action,
         message: `Product ${result?.action} successfully via new import`,
       });
     } else {
-      server.log.info(
-        `Product created successfully via legacy: ${createdProduct.product?.id || createdProduct.id}`
-      );
+      const pid = createdProduct.product?.id || createdProduct.id;
+      const handle = createdProduct.product?.handle || confirmedData.handle;
+      server.log.info(`Product created successfully via legacy: ${pid}`);
 
       return reply.status(201).send({
         success: true,
-        productId: createdProduct.product?.id || createdProduct.id,
+        productId: pid,
+        handle,
+        storefrontUrl: buildStorefrontUrl(handle),
         message: "Product created successfully via legacy",
       });
     }
