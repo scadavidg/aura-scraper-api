@@ -18,6 +18,11 @@ const openrouter = createOpenAI({
 
 const tvly = tavily({ apiKey: process.env.TAVILY_API_KEY });
 
+// Verificar que la API key de Google está presente
+if (!process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
+  throw new Error("GOOGLE_GENERATIVE_AI_API_KEY env var not set");
+}
+
 async function getFragranticaImages(perfumeName: string): Promise<string[]> {
   console.log(`Buscando imágenes para: ${perfumeName} con Tavily Researcher...`);
   try {
