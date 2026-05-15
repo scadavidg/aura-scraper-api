@@ -106,17 +106,19 @@ JSON Variantes: ${variantData || 'No disponible'}
 Texto de la página: ${textContent}
 
 INSTRUCCIONES:
-1. VARIANTES Y PRECIOS (leer con cuidado):
-   - En Shopify los precios vienen en centavos — SIEMPRE dividir entre 100.
-   - 'price' = precio actual que paga el cliente (el MENOR cuando hay descuento).
-   - 'compare_at_price' = precio original tachado (el MAYOR, precio sin descuento).
-   - Regla de mapeo:
-       * Si compare_at_price > price → hay descuento:
-           precios[i]           = compare_at_price / 100  (precio normal, el mayor)
-           precios_descuento[i] = price / 100             (precio rebajado, el menor)
-       * Si compare_at_price == price, es null o es 0 → sin descuento:
-           precios[i]           = price / 100
-           precios_descuento[i] = price / 100
+1. VARIANTES Y PRECIOS — LEE ESTO CON MÁXIMA ATENCIÓN:
+   - En Shopify los precios vienen en centavos (números grandes) — SIEMPRE dividir entre 100.
+   - Campos Shopify:
+       * 'price'            = lo que el cliente PAGA HOY (puede ser rebajado)
+       * 'compare_at_price' = precio ORIGINAL tachado (el que estaba antes del descuento)
+   - MAPEO OBLIGATORIO a los campos del schema:
+       * 'precios[i]'           = precio ORIGINAL = compare_at_price / 100
+                                  (si compare_at_price es null/0/igual a price → usar price / 100)
+       * 'precios_descuento[i]' = precio que PAGA el cliente = price / 100
+   - EJEMPLO CONCRETO: compare_at_price=69000000, price=62100000
+       → precios[i] = 69000000/100 = 690000  ← el mayor (original)
+       → precios_descuento[i] = 62100000/100 = 621000  ← el menor (lo que paga)
+   - NUNCA pongas el mismo valor en ambos campos cuando compare_at_price > price.
    - REGLA CRÍTICA: Excluye CUALQUIER variante con las palabras 'decant', 'Decant', 'tester', 'Tester' o 'TESTER'.
 2. DISPONIBILIDAD: En Shopify busca el campo 'available' (true=Disponible, false=Agotado). En el texto, busca 'Agotado' o botones deshabilitados.
 3. Genera un handle único en minúsculas con guiones.
