@@ -13,41 +13,42 @@ import { google } from "@ai-sdk/google";
 import { createOpenAI } from "@ai-sdk/openai";
 import { z } from "zod";
 import dotenv from "dotenv";
-import {
-  initializeApp,
-  getApps,
-  FirebaseApp,
-} from "firebase/app";
-import {
-  getFirestore,
-  Firestore,
-  collection,
-  addDoc,
-  Timestamp,
-} from "firebase/firestore";
+// Firebase imports (commented out - enable if needed for Firestore logging)
+// import {
+//   initializeApp,
+//   getApps,
+//   FirebaseApp,
+// } from "firebase/app";
+// import {
+//   getFirestore,
+//   Firestore,
+//   collection,
+//   addDoc,
+//   Timestamp,
+// } from "firebase/firestore";
 
 dotenv.config();
 
-// Firebase init
-const firebaseConfig = {
-  apiKey: process.env.FIREBASE_API_KEY || process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
-};
+// Firebase init (commented out - enable if needed)
+// const firebaseConfig = {
+//   apiKey: process.env.FIREBASE_API_KEY || process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+//   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+//   projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+//   storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+//   messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+//   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+// };
 
-let firestore: Firestore | null = null;
+let firestore: any = null;
 
-try {
-  const app =
-    getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
-  firestore = getFirestore(app);
-  console.log("✅ Firebase initialized");
-} catch (e) {
-  console.warn("⚠️  Firebase not available. Results won't be saved to Firestore.");
-}
+// try {
+//   const app =
+//     getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
+//   firestore = getFirestore(app);
+//   console.log("✅ Firebase initialized");
+// } catch (e) {
+//   console.warn("⚠️  Firebase not available. Results won't be saved to Firestore.");
+// }
 
 // Models to test
 const openrouter = createOpenAI({
@@ -209,28 +210,29 @@ INSTRUCCIONES:
   return result;
 }
 
-async function saveToFirestore(results: TestResult[], url: string) {
-  if (!firestore) {
-    console.log("\n⚠️  Firestore not available. Skipping save.");
-    return;
-  }
-
-  try {
-    console.log("\n💾 Saving results to Firestore...");
-    const docRef = await addDoc(collection(firestore, "scraper_experiments"), {
-      url,
-      timestamp: Timestamp.now(),
-      results: results.map((r) => ({
-        ...r,
-        startTime: new Date(r.startTime).toISOString(),
-        endTime: new Date(r.endTime).toISOString(),
-      })),
-    });
-    console.log(`✅ Saved to scraper_experiments/${docRef.id}`);
-  } catch (error: any) {
-    console.error("❌ Failed to save to Firestore:", error.message);
-  }
-}
+// Firestore save function (commented out - enable if needed)
+// async function saveToFirestore(results: TestResult[], url: string) {
+//   if (!firestore) {
+//     console.log("\n⚠️  Firestore not available. Skipping save.");
+//     return;
+//   }
+//
+//   try {
+//     console.log("\n💾 Saving results to Firestore...");
+//     const docRef = await addDoc(collection(firestore, "scraper_experiments"), {
+//       url,
+//       timestamp: Timestamp.now(),
+//       results: results.map((r) => ({
+//         ...r,
+//         startTime: new Date(r.startTime).toISOString(),
+//         endTime: new Date(r.endTime).toISOString(),
+//       })),
+//     });
+//     console.log(`✅ Saved to scraper_experiments/${docRef.id}`);
+//   } catch (error: any) {
+//     console.error("❌ Failed to save to Firestore:", error.message);
+//   }
+// }
 
 function printSummary(results: TestResult[]) {
   console.log("\n" + "=".repeat(80));
@@ -299,8 +301,8 @@ async function main() {
     // Print summary
     printSummary(results);
 
-    // Save to Firestore
-    await saveToFirestore(results, url);
+    // Save to Firestore (commented out - enable if needed)
+    // await saveToFirestore(results, url);
 
     console.log("\n✅ Test completed");
   } catch (error: any) {
