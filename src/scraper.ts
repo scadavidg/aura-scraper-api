@@ -93,11 +93,11 @@ export async function scrapePerfumePage(url: string, directImageUrl?: string) {
       return null;
     });
 
-    // --- FASE 1: THE MINER (DeepSeek via OpenRouter) ---
+    // --- FASE 1: THE MINER (Gemini 2.5 Flash-Lite via OpenRouter) ---
     // Extracción de datos técnicos estructurados
-    console.log("Fase 1: Extrayendo datos técnicos con DeepSeek...");
+    console.log("Fase 1: Extrayendo datos técnicos con Gemini 2.5 Flash-Lite...");
     const { object: technicalData } = await generateObject({
-      model: openrouter("deepseek/deepseek-chat"),
+      model: openrouter("google/gemini-2.5-flash-lite"),
       schema: PerfumeSchema,
       system: "Eres un extractor de datos ultra-preciso. Tu misión es extraer datos técnicos de perfumes sin inventar nada.",
       prompt: `Extrae la información técnica del perfume basándote en este contenido:
