@@ -14,6 +14,7 @@ import {
 import { mapPerfumeToMedusaProduct } from "./medusa-mapper";
 import { validateAndOptimizeImageData, processAndUploadImage } from "./image-processor";
 import { authMiddleware, isValidToken, registerToken } from "./auth";
+import { tavily } from "@tavily/core";
 
 dotenv.config();
 
@@ -342,6 +343,40 @@ server.post("/create-product", async (request, reply) => {
   } catch (error) {
     server.log.error(error);
     return reply.status(500).send({ error: "Failed to create product" });
+  }
+});
+
+// ── POST /search-images ───────────────────────────────────────────────────────
+server.post("/search-images", async (request, reply) => {
+  try {
+    if (!isValidToken(request.headers.authorization?.replace("Bearer ", ""))) {
+      return reply.status(401).send({ error: "Unauthorized" });
+    }
+
+    const { query } = request.body as { query?: string };
+    if (!query?.trim()) {
+      return reply.status(400).send({ error: "query is required" });
+    }
+
+    const tvly = tavily({ apiKey: process.env.TAVILY_API_KEY });
+    const response = await tvly.search(query.trim(), {
+      searchDepth: "advanced",
+      includeImages: true,
+      maxResults: 10,
+    });
+
+    const images: string[] = [];
+    for (const img of (response.images as any[]) || []) {
+      const url = typeof img === "string" ? img : img?.url;
+      if (url && typeof url === "string" && images.length < 10) {
+        images.push(url);
+      }
+    }
+
+    return reply.status(200).send({ images });
+  } catch (error) {
+    server.log.error(error);
+    return reply.status(500).send({ error: "Failed to search images" });
   }
 });
 
