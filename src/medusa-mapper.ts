@@ -47,30 +47,63 @@ export function mapPerfumeToMedusaProduct(perfume: Perfume) {
   };
 }
 
+/** Split on top-level commas only — ignores commas inside parentheses. */
+function splitTopLevel(s?: string): string[] {
+  if (!s) return [];
+  const result: string[] = [];
+  let depth = 0;
+  let current = "";
+  for (const ch of s) {
+    if (ch === "(") depth++;
+    else if (ch === ")") depth--;
+    else if (ch === "," && depth === 0) {
+      const trimmed = current.trim();
+      if (trimmed) result.push(trimmed);
+      current = "";
+      continue;
+    }
+    current += ch;
+  }
+  const last = current.trim();
+  if (last) result.push(last);
+  return result;
+}
+
 function buildTags(perfume: Perfume): string[] {
   const tags: string[] = [];
-
-  if (perfume.genero) {
-    tags.push(`genero_${perfume.genero.toLowerCase()}`);
-  }
 
   if (perfume.concentracion) {
     const concNorm = perfume.concentracion
       .toLowerCase()
-      .replace(/\s+/g, "_")
-      .replace(/[^a-z0-9_]/g, "");
-    tags.push(`concentracion_${concNorm}`);
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .replace(/\s+/g, "")
+      .replace(/[^a-z0-9]/g, "");
+    tags.push(`tag_concentracion_${concNorm}`);
   }
 
-  if (perfume.categoria) {
-    tags.push(`categoria_${perfume.categoria.toLowerCase().replace(/\s+/g, "_")}`);
+  if (perfume.acordes) {
+    splitTopLevel(perfume.acordes).forEach((a) => {
+      const norm = a
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[̀-ͯ]/g, "")
+        .replace(/\s+/g, "")
+        .replace(/[^a-z0-9]/g, "");
+      tags.push(`tag_acorde_${norm}`);
+    });
   }
 
   if (perfume.clima) {
-    perfume.clima
-      .split(",")
-      .map((c) => c.trim().toLowerCase().replace(/\s+/g, "_"))
-      .forEach((c) => tags.push(`clima_${c}`));
+    splitTopLevel(perfume.clima).forEach((c) => {
+      const norm = c
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[̀-ͯ]/g, "")
+        .replace(/[\s()]+/g, "")
+        .replace(/[^a-z0-9]/g, "");
+      tags.push(`tag_clima_${norm}`);
+    });
   }
 
   return tags;
