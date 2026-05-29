@@ -64,7 +64,7 @@ server.post("/scrape", async (request, reply) => {
         server.log.info(`[variant-fix] removed tester variants: ${JSON.stringify(removed)}`);
         scrapedData.variantes         = keepIdx.map((i: number) => scrapedData.variantes[i]);
         scrapedData.precios           = keepIdx.map((i: number) => (scrapedData.precios ?? [])[i]);
-        scrapedData.precios_descuento = keepIdx.map((i: number) => (scrapedData.precios_descuento ?? [])[i]);
+        scrapedData.precios_descuento = keepIdx.map((i: number) => (scrapedData.precios_descuento ?? [])[i] ?? 0);
         scrapedData.disponibilidad    = keepIdx.map((i: number) => (scrapedData.disponibilidad ?? [])[i]);
       }
     }
