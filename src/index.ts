@@ -83,8 +83,9 @@ server.post("/scrape", async (request, reply) => {
       });
     }
     if (Array.isArray(scrapedData.precios_descuento)) {
-      scrapedData.precios_descuento = scrapedData.precios_descuento.map((p: number | null, i: number) => {
-        if (p != null && p > COP_MAX_REASONABLE) {
+      scrapedData.precios_descuento = scrapedData.precios_descuento.map((p: number | null, i: number): number => {
+        if (p == null) return 0;
+        if (p > COP_MAX_REASONABLE) {
           const fixed = Math.round(p / 100);
           server.log.info(`[price-fix] variant ${i}: discount divided by 100 (${p} → ${fixed})`);
           return fixed;
