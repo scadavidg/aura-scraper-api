@@ -4,9 +4,13 @@ import { Perfume } from "./schema";
  * Maps Perfume (scraper output) to Medusa product format.
  * Handles variants, prices, images, and metadata.
  */
+function toTitleCase(s: string): string {
+  return s.replace(/\S+/g, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+}
+
 export function mapPerfumeToMedusaProduct(perfume: Perfume) {
   return {
-    title: perfume.nombre,
+    title: toTitleCase(perfume.nombre),
     handle: perfume.handle,
     description: perfume.descripcion,
     type_id: null,
