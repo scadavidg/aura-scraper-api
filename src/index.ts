@@ -51,9 +51,27 @@ server.post("/scrape", async (request, reply) => {
     server.log.info(`Scraping started for: ${url}${imageUrl ? ` with direct image: ${imageUrl}` : ''}`);
     const scrapedData = await scrapePerfumePage(url, imageUrl);
 
-    // Safety net 1: divide by 100 if LLM forgot to convert Shopify centavos to COP pesos.
-    // COP perfume prices max out ~2,000,000. Anything above 3,000,000 is still raw Shopify.
-    const COP_MAX_REASONABLE = 3_000_000;
+    // Safety net 1: strip tester/decant variants the LLM included despite prompt instructions.
+    // Filter is applied to all parallel arrays so indices stay aligned.
+    if (Array.isArray(scrapedData.variantes)) {
+      const TESTER_RE = /\b(tester|decant|muestra|sample)\b|\(t\)/i;
+      const keepIdx: number[] = scrapedData.variantes
+        .map((v: string, i: number) => (TESTER_RE.test(v) ? -1 : i))
+        .filter((i: number) => i !== -1);
+
+      if (keepIdx.length < scrapedData.variantes.length) {
+        const removed = scrapedData.variantes.filter((_: string, i: number) => !keepIdx.includes(i));
+        server.log.info(`[variant-fix] removed tester variants: ${JSON.stringify(removed)}`);
+        scrapedData.variantes         = keepIdx.map((i: number) => scrapedData.variantes[i]);
+        scrapedData.precios           = keepIdx.map((i: number) => (scrapedData.precios ?? [])[i]);
+        scrapedData.precios_descuento = keepIdx.map((i: number) => (scrapedData.precios_descuento ?? [])[i]);
+        scrapedData.disponibilidad    = keepIdx.map((i: number) => (scrapedData.disponibilidad ?? [])[i]);
+      }
+    }
+
+    // Safety net 2: divide by 100 if LLM forgot to convert Shopify centavos to COP pesos.
+    // Max real COP perfume price confirmed at 6,000,000. Anything above that is raw Shopify centavos.
+    const COP_MAX_REASONABLE = 6_000_000;
     if (Array.isArray(scrapedData.precios)) {
       scrapedData.precios = scrapedData.precios.map((p: number, i: number) => {
         if (p > COP_MAX_REASONABLE) {
@@ -75,7 +93,7 @@ server.post("/scrape", async (request, reply) => {
       });
     }
 
-    // Safety net 2: ensure precios >= precios_descuento per variant.
+    // Safety net 3: ensure precios >= precios_descuento per variant.
     // LLMs occasionally invert compare_at_price / price despite prompt instructions.
     if (Array.isArray(scrapedData.precios) && Array.isArray(scrapedData.precios_descuento)) {
       for (let i = 0; i < scrapedData.precios.length; i++) {

@@ -119,7 +119,7 @@ INSTRUCCIONES:
        → precios[i] = 69000000/100 = 690000  ← el mayor (original)
        → precios_descuento[i] = 62100000/100 = 621000  ← el menor (lo que paga)
    - NUNCA pongas el mismo valor en ambos campos cuando compare_at_price > price.
-   - REGLA CRÍTICA: Excluye CUALQUIER variante con las palabras 'decant', 'Decant', 'tester', 'Tester' o 'TESTER'.
+   - ⛔ EXCLUSIÓN TOTAL OBLIGATORIA: NO incluyas NINGUNA variante cuyo título contenga 'tester', 'Tester', 'TESTER', 'decant', 'Decant', 'muestra' o 'sample'. Si las incluyes cometerás un error grave. Solo incluye variantes de volumen real (ej: 50 ML, 100 ML, 200 ML).
 2. DISPONIBILIDAD: En Shopify busca el campo 'available' (true=Disponible, false=Agotado). En el texto, busca 'Agotado' o botones deshabilitados.
 3. Genera un handle único en minúsculas con guiones.
 4. El campo 'descripcion' déjalo como string vacío por ahora.
