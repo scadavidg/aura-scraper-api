@@ -51,7 +51,31 @@ server.post("/scrape", async (request, reply) => {
     server.log.info(`Scraping started for: ${url}${imageUrl ? ` with direct image: ${imageUrl}` : ''}`);
     const scrapedData = await scrapePerfumePage(url, imageUrl);
 
-    // Safety net: ensure precios >= precios_descuento per variant.
+    // Safety net 1: divide by 100 if LLM forgot to convert Shopify centavos to COP pesos.
+    // COP perfume prices max out ~2,000,000. Anything above 3,000,000 is still raw Shopify.
+    const COP_MAX_REASONABLE = 3_000_000;
+    if (Array.isArray(scrapedData.precios)) {
+      scrapedData.precios = scrapedData.precios.map((p: number, i: number) => {
+        if (p > COP_MAX_REASONABLE) {
+          const fixed = Math.round(p / 100);
+          server.log.info(`[price-fix] variant ${i}: divided by 100 (${p} → ${fixed})`);
+          return fixed;
+        }
+        return p;
+      });
+    }
+    if (Array.isArray(scrapedData.precios_descuento)) {
+      scrapedData.precios_descuento = scrapedData.precios_descuento.map((p: number | null, i: number) => {
+        if (p != null && p > COP_MAX_REASONABLE) {
+          const fixed = Math.round(p / 100);
+          server.log.info(`[price-fix] variant ${i}: discount divided by 100 (${p} → ${fixed})`);
+          return fixed;
+        }
+        return p;
+      });
+    }
+
+    // Safety net 2: ensure precios >= precios_descuento per variant.
     // LLMs occasionally invert compare_at_price / price despite prompt instructions.
     if (Array.isArray(scrapedData.precios) && Array.isArray(scrapedData.precios_descuento)) {
       for (let i = 0; i < scrapedData.precios.length; i++) {
