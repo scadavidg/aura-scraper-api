@@ -122,22 +122,43 @@ INSTRUCCIONES:
    - ⛔ EXCLUSIÓN TOTAL OBLIGATORIA: NO incluyas NINGUNA variante cuyo título contenga 'tester', 'Tester', 'TESTER', 'decant', 'Decant', 'muestra' o 'sample'. Si las incluyes cometerás un error grave. Solo incluye variantes de volumen real (ej: 50 ML, 100 ML, 200 ML).
 2. DISPONIBILIDAD: En Shopify busca el campo 'available' (true=Disponible, false=Agotado). En el texto, busca 'Agotado' o botones deshabilitados.
 3. Genera un handle único en minúsculas con guiones.
-4. El campo 'descripcion' déjalo como string vacío por ahora.
+4. El campo 'descripcion': extrae literalmente el texto descriptivo del producto que aparece en la página (el párrafo o párrafos que describen el perfume, su historia, sus notas, su personalidad). NO lo inventes. Si no hay descripción visible, déjalo vacío.
 5. Retorna 4 arrays del mismo tamaño: 'variantes', 'precios', 'precios_descuento' y 'disponibilidad'.`
     });
 
     // --- FASE 2: THE CREATIVE (DeepSeek-V3 via OpenRouter) ---
-    // Generación de descripción persuasiva de marketing
+    // Paráfrasis + enriquecimiento de la descripción original
     console.log("Fase 2: Generando descripción creativa con DeepSeek-V3...");
+    const hasOriginalDesc = technicalData.descripcion && technicalData.descripcion.trim().length > 20;
     const { text: creativeDescription } = await generateText({
       model: openrouter("deepseek/deepseek-chat"),
-      system: "Eres un copywriter experto en perfumería de lujo. Crea textos seductores, elegantes y persuasivos.",
-      prompt: `Basándote en estos datos del perfume:
-Nombre: ${technicalData.nombre}
-Notas: ${technicalData.notas}
-Acordes: ${technicalData.acordes}
+      system: "Eres un copywriter experto en perfumería de lujo. Crea textos seductores, elegantes y persuasivos en español.",
+      prompt: hasOriginalDesc
+        ? `Tienes la descripción original de este perfume tomada de la página del producto:
 
-Redacta una descripción de marketing de 2 a 3 párrafos cortos. Debe ser sofisticada, evocar emociones y resaltar por qué este perfume es una joya. Evita sonar genérico, usa lenguaje de alta perfumería.`
+"""
+${technicalData.descripcion}
+"""
+
+Datos adicionales:
+Nombre: ${technicalData.nombre}
+Notas olfativas: ${technicalData.notas || "no especificadas"}
+Acordes: ${technicalData.acordes || "no especificados"}
+Concentración: ${technicalData.concentracion || "no especificada"}
+
+REGLAS OBLIGATORIAS — síguelas con precisión:
+1. PARÁFRASIS: reescribe la descripción original cambiando estructura de oraciones, sinónimos y orden de ideas. La similitud con el texto original NO debe superar el 20% (máximo 1 de cada 5 palabras en común en cualquier frase).
+2. CONTENIDO NUEVO: al menos el 40% del texto final debe ser contenido original que NO existe en la descripción fuente — añade sensaciones, contexto de uso, evocaciones o características de las notas.
+3. LONGITUD: máximo 180 palabras en total.
+4. IDIOMA: español, tono sofisticado de alta perfumería.
+5. FORMATO: devuelve solo el texto, sin títulos ni bullets.`
+        : `Redacta una descripción de marketing para este perfume:
+Nombre: ${technicalData.nombre}
+Notas: ${technicalData.notas || "no especificadas"}
+Acordes: ${technicalData.acordes || "no especificados"}
+Concentración: ${technicalData.concentracion || "no especificada"}
+
+REGLAS: máximo 180 palabras, español sofisticado de alta perfumería, 2-3 párrafos cortos, sin títulos ni bullets.`
     });
 
     technicalData.descripcion = creativeDescription;
