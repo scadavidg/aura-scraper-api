@@ -151,7 +151,7 @@ REGLAS OBLIGATORIAS — síguelas con precisión:
 2. CONTENIDO NUEVO: al menos el 40% del texto final debe ser contenido original que NO existe en la descripción fuente — añade sensaciones, contexto de uso, evocaciones o características de las notas.
 3. LONGITUD: máximo 180 palabras en total.
 4. IDIOMA: español, tono sofisticado de alta perfumería.
-5. FORMATO: devuelve solo el texto, sin títulos ni bullets.`
+5. FORMATO: devuelve ÚNICAMENTE el texto de la descripción. Cero notas, cero aclaraciones, cero metainformación sobre similitud léxica, porcentajes de contenido nuevo ni ningún comentario sobre el proceso de reescritura. Solo la descripción.`
         : `Redacta una descripción de marketing para este perfume:
 Nombre: ${technicalData.nombre}
 Notas: ${technicalData.notas || "no especificadas"}
