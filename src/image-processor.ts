@@ -14,78 +14,131 @@ const s3Client = new S3Client({
 });
 
 const OUTPUT_SIZE = 1080;
-const WHITE = { r: 255, g: 255, b: 255, alpha: 1 };
-const TARGET_MAX_BYTES = 100 * 1024; // 100KB
+const TARGET_MAX_BYTES = 100 * 1024; // 100 KB
 const TEMP_DIR = path.join(process.cwd(), 'temp_images');
 
-// Asegurar que el directorio temporal existe
 if (!fs.existsSync(TEMP_DIR)) {
   fs.mkdirSync(TEMP_DIR, { recursive: true });
 }
 
-/**
- * Normalizes a string by converting to lowercase, removing spaces, 
- * and removing accents (diacritics).
- */
 function normalizeName(name: string): string {
   return name
     .toLowerCase()
     .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "") // Remove accents
-    .replace(/\s+/g, ""); // Remove spaces
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, "");
 }
 
-/**
- * Pads an image to a square canvas of OUTPUT_SIZE x OUTPUT_SIZE with white background.
- */
-async function processToSquare(imageBuffer: Buffer): Promise<Buffer> {
-  // 1. Trim whitespace and resize to fit inside the target size
-  const resized = await sharp(imageBuffer)
-    .trim()
-    .resize(OUTPUT_SIZE, OUTPUT_SIZE, { 
-      fit: 'inside', 
-      withoutEnlargement: false 
-    })
-    .toBuffer();
+// \u2500\u2500 Bounding-box detection \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
-  const { width = OUTPUT_SIZE, height = OUTPUT_SIZE } = await sharp(resized).metadata();
-
-  // 2. Symmetric padding
-  const padTop = Math.floor((OUTPUT_SIZE - height) / 2);
-  const padLeft = Math.floor((OUTPUT_SIZE - width) / 2);
-
-  return sharp(resized)
-    .extend({
-      top: padTop,
-      bottom: OUTPUT_SIZE - height - padTop,
-      left: padLeft,
-      right: OUTPUT_SIZE - width - padLeft,
-      background: WHITE,
-    })
-    .toBuffer();
-}
+interface BoundingBox { top: number; left: number; width: number; height: number; }
 
 /**
- * Iteratively tries to convert the image to WebP under the target size.
+ * Scans raw RGBA pixel data and returns the bounding box of non-background pixels.
+ *
+ * Offset math:
+ *   Pixel (x,y) \u2192 byte index (y * imgWidth + x) * 4 in the flat RGBA buffer.
+ *   We track (minX, minY, maxX, maxY) across all "product" pixels, then apply
+ *   a small fractional padding before clamping to image bounds.
  */
-async function convertToOptimizedWebP(imageBuffer: Buffer): Promise<Buffer> {
-  let quality = 80;
-  let resultBuffer = await sharp(imageBuffer)
-    .webp({ quality, effort: 6 })
-    .toBuffer();
+function detectBoundingBox(
+  data: Buffer,
+  imgWidth: number,
+  imgHeight: number,
+  threshold: number,
+  bboxPadding: number,
+): BoundingBox {
+  let minX = imgWidth, maxX = 0;
+  let minY = imgHeight, maxY = 0;
 
-  // If already under target, return
-  if (resultBuffer.length <= TARGET_MAX_BYTES) return resultBuffer;
-
-  // Otherwise, reduce quality until it fits or reaches a minimum
-  while (resultBuffer.length > TARGET_MAX_BYTES && quality > 30) {
-    quality -= 10;
-    resultBuffer = await sharp(imageBuffer)
-      .webp({ quality, effort: 6 })
-      .toBuffer();
+  for (let y = 0; y < imgHeight; y++) {
+    for (let x = 0; x < imgWidth; x++) {
+      const i = (y * imgWidth + x) * 4;
+      if (data[i + 3] < 128) continue; // transparent \u2014 skip
+      // White-background assumption: product is darker than (255 \u2212 threshold)
+      if (data[i] < 255 - threshold || data[i + 1] < 255 - threshold || data[i + 2] < 255 - threshold) {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+    }
   }
 
-  return resultBuffer;
+  if (minX > maxX || minY > maxY) return { top: 0, left: 0, width: imgWidth, height: imgHeight };
+
+  const padX = Math.round((maxX - minX) * bboxPadding);
+  const padY = Math.round((maxY - minY) * bboxPadding);
+  const top    = Math.max(0, minY - padY);
+  const left   = Math.max(0, minX - padX);
+  const bottom = Math.min(imgHeight - 1, maxY + padY);
+  const right  = Math.min(imgWidth  - 1, maxX + padX);
+  return { top, left, width: right - left + 1, height: bottom - top + 1 };
+}
+
+/**
+ * Normalises a product photo to a 1080\u00d71080 white canvas:
+ *   1. Detects the product bounding box via pixel threshold scan.
+ *   2. Crops to the bbox.
+ *   3. Scales so the product HEIGHT = 71 % of the canvas (\u224814.5 % margin each side).
+ *      Width scales proportionally (no deformation). Lanczos3 interpolation.
+ *   4. Centers on the canvas:
+ *      offsetX = \u230a(1080 \u2212 scaledWidth)  / 2\u230b
+ *      offsetY = \u230a(1080 \u2212 scaledHeight) / 2\u230b
+ * Returns a PNG buffer ready for WebP conversion.
+ */
+async function processToSquare(imageBuffer: Buffer): Promise<Buffer> {
+  const { data: rawData, info } = await sharp(imageBuffer)
+    .ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+
+  const bbox = detectBoundingBox(rawData, info.width, info.height, 20, 0.02);
+
+  const cropped = await sharp(imageBuffer)
+    .extract({ left: bbox.left, top: bbox.top, width: bbox.width, height: bbox.height })
+    .toBuffer();
+
+  const scaledHeight = Math.round(OUTPUT_SIZE * 0.71);
+  const scaledWidth  = Math.round(scaledHeight * (bbox.width / bbox.height));
+
+  const resized = await sharp(cropped)
+    .resize(scaledWidth, scaledHeight, { kernel: sharp.kernel.lanczos3, fit: 'fill' })
+    .toBuffer();
+
+  const offsetX = Math.floor((OUTPUT_SIZE - scaledWidth)  / 2);
+  const offsetY = Math.floor((OUTPUT_SIZE - scaledHeight) / 2);
+
+  return sharp({
+    create: { width: OUTPUT_SIZE, height: OUTPUT_SIZE, channels: 3,
+              background: { r: 255, g: 255, b: 255, alpha: 1 } },
+  })
+    .composite([{ input: resized, left: offsetX, top: offsetY }])
+    .png()
+    .toBuffer();
+}
+
+/**
+ * Compresses a PNG/WebP buffer to WebP \u2264 TARGET_MAX_BYTES using binary-search quality.
+ * More precise than a fixed step-down loop \u2014 maximises quality within the size limit.
+ */
+async function convertToOptimizedWebP(imageBuffer: Buffer): Promise<Buffer> {
+  // Fast path: try quality 80 first
+  let result = await sharp(imageBuffer).webp({ quality: 80, effort: 6 }).toBuffer();
+  if (result.length <= TARGET_MAX_BYTES) return result;
+
+  // Binary search between quality 30 and 79
+  let lo = 30, hi = 79;
+  let best = result;
+  for (let i = 0; i < 10 && lo <= hi; i++) {
+    const mid = Math.floor((lo + hi) / 2);
+    const candidate = await sharp(imageBuffer).webp({ quality: mid, effort: 6 }).toBuffer();
+    if (candidate.length <= TARGET_MAX_BYTES) {
+      best = candidate;
+      lo = mid + 1; // try higher quality
+    } else {
+      hi = mid - 1; // too big, go lower
+    }
+  }
+  return best;
 }
 
 /**
