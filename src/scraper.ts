@@ -23,34 +23,42 @@ if (!process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
   throw new Error("GOOGLE_GENERATIVE_AI_API_KEY env var not set");
 }
 
-async function getFragranticaImages(perfumeName: string): Promise<string[]> {
-  console.log(`Buscando imágenes para: ${perfumeName} con Tavily Researcher...`);
-  try {
-    // Usar Tavily para buscar imágenes directamente
-    const response = await tvly.search(`site:fragrantica.es perfume ${perfumeName}`, {
-      searchDepth: "advanced",
-      includeImages: true,
-      maxResults: 10
-    });
+async function tavilyImageSearch(query: string): Promise<string[]> {
+  const response = await tvly.search(query, {
+    searchDepth: "advanced",
+    includeImages: true,
+    maxResults: 10,
+  });
+  const images = (response.images as any[]) || [];
+  const urls: string[] = [];
+  for (const img of images) {
+    const url = typeof img === "string" ? img : img?.url;
+    if (url && urls.length < 3) urls.push(url);
+  }
+  return urls;
+}
 
-    // Extraer URLs de imágenes
-    const images = response.images as any[];
-    const imageUrls: string[] = [];
+async function searchProductImages(perfumeName: string): Promise<string[]> {
+  // Try queries in order, stop at first that yields results.
+  // 1. Fragrantica (preferred — high-quality canonical packshots).
+  // 2. Generic web search — fallback when Fragrantica has no entry for the perfume.
+  const queries = [
+    `site:fragrantica.es perfume ${perfumeName}`,
+    `perfume ${perfumeName}`,
+  ];
 
-    for (const img of images) {
-      const url = typeof img === 'string' ? img : img?.url;
-      if (url && imageUrls.length < 3) {
-        imageUrls.push(url);
+  for (const q of queries) {
+    try {
+      console.log(`[image-search] querying Tavily: "${q}"`);
+      const urls = await tavilyImageSearch(q);
+      if (urls.length > 0) {
+        console.log(`[image-search] ${urls.length} imagen(es) vía "${q}"`);
+        return urls;
       }
+      console.log(`[image-search] 0 resultados para "${q}", probando fallback…`);
+    } catch (error) {
+      console.error(`[image-search] error en "${q}":`, error);
     }
-
-    if (imageUrls.length > 0) {
-      console.log(`${imageUrls.length} imagen(es) encontrada(s) vía Tavily`);
-      return imageUrls;
-    }
-
-  } catch (error) {
-    console.error("Error obteniendo imágenes con Tavily:", error);
   }
   return [];
 }
@@ -174,7 +182,7 @@ REGLAS: máximo 180 palabras, español sofisticado de alta perfumería, 2-3 pár
       possibleImages.push(directImageUrl);
       console.log(`Usando URL de imagen directa proporcionada: ${directImageUrl}`);
     } else if (technicalData.nombre) {
-      const tavilyImages = await getFragranticaImages(technicalData.nombre);
+      const tavilyImages = await searchProductImages(technicalData.nombre);
       possibleImages.push(...tavilyImages);
     }
 

@@ -158,15 +158,9 @@ server.post("/confirm-scrape", async (request, reply) => {
 
     const confirmedData = validationResult.data;
 
-    // Validate image is present - required field
-    if (!confirmedData.image || confirmedData.image.trim() === "") {
-      return reply.status(400).send({
-        error: "Image is required",
-        message: "A product must have an image. Please upload or select an image before confirming.",
-      });
-    }
-
-    // Process and optimize image if provided
+    // Image is optional — products can be created without one and have it added
+    // later via the catalog correction flow. The block below already guards on
+    // `confirmedData.image` so the empty case is a no-op.
     if (confirmedData.image) {
       try {
         const originalImage = confirmedData.image;
@@ -257,14 +251,7 @@ server.post("/create-product", async (request, reply) => {
       return reply.status(400).send({ error: "Provide either data or sessionId" });
     }
 
-    // Validate image exists (final safety check)
-    if (!confirmedData.image || confirmedData.image.trim() === "") {
-      return reply.status(400).send({
-        error: "Product image is missing",
-        message: "Cannot create product without an image.",
-      });
-    }
-
+    // Image is optional — medusa-mapper handles the empty case (images: []).
     const useNewEndpoint = process.env.USE_NEW_IMPORT_ENDPOINT === "true";
     const medusaBase = (process.env.MEDUSA_BACKEND_URL || "").replace(/\/$/, "");
     let response;
