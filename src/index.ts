@@ -260,6 +260,10 @@ server.post("/create-product", async (request, reply) => {
       // NEW: Use /store/products/import
       // Filter out possibleImages as it's not needed by the backend
       const { possibleImages, ...perfumeData } = confirmedData;
+      // Default to "Disponible" if no type_id provided
+      if (!perfumeData.type_id) {
+        perfumeData.type_id = "ptyp_01KEWNMC8WZA1F199WQK29F419";
+      }
 
       const medusaUrl = `${medusaBase}/store/products/import`;
       server.log.info(`Using new import endpoint: ${medusaUrl}`);
