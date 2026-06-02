@@ -26,6 +26,33 @@ if (process.env.SCRAPER_API_TOKEN) {
 
 const server = fastify({ logger: true });
 
+// Semáforo de concurrencia — máx 2 instancias de Chromium simultáneas.
+// Cada request a /scrape espera su turno; sin esto el container se queda sin
+// threads y Chromium crashea con EAGAIN / SIGTRAP.
+const MAX_CONCURRENT_SCRAPES = parseInt(process.env.MAX_CONCURRENT_SCRAPES ?? "2", 10);
+let activeScrapes = 0;
+const scrapeQueue: Array<() => void> = [];
+
+function acquireScrapeSlot(): Promise<void> {
+  return new Promise((resolve) => {
+    if (activeScrapes < MAX_CONCURRENT_SCRAPES) {
+      activeScrapes++;
+      resolve();
+    } else {
+      scrapeQueue.push(() => { activeScrapes++; resolve(); });
+    }
+  });
+}
+
+function releaseScrapeSlot(): void {
+  const next = scrapeQueue.shift();
+  if (next) {
+    next();
+  } else {
+    activeScrapes = Math.max(0, activeScrapes - 1);
+  }
+}
+
 // ── CORS Configuration ──────────────────────────────────────────────────────
 server.register(fastifyCors, {
   origin: process.env.CORS_ORIGIN || ["http://localhost:3001", "http://localhost:3000"],
@@ -48,8 +75,14 @@ server.post("/scrape", async (request, reply) => {
       return reply.status(400).send({ error: "URL is required" });
     }
 
-    server.log.info(`Scraping started for: ${url}${imageUrl ? ` with direct image: ${imageUrl}` : ''}`);
-    const scrapedData = await scrapePerfumePage(url, imageUrl);
+    server.log.info(`Scraping started for: ${url}${imageUrl ? ` with direct image: ${imageUrl}` : ''} [queue=${scrapeQueue.length} active=${activeScrapes}]`);
+    await acquireScrapeSlot();
+    let scrapedData: Awaited<ReturnType<typeof scrapePerfumePage>>;
+    try {
+      scrapedData = await scrapePerfumePage(url, imageUrl);
+    } finally {
+      releaseScrapeSlot();
+    }
 
     // Safety net 1: strip tester/decant variants the LLM included despite prompt instructions.
     // Filter is applied to all parallel arrays so indices stay aligned.
