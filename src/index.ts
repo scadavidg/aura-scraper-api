@@ -45,12 +45,9 @@ function acquireScrapeSlot(): Promise<void> {
 }
 
 function releaseScrapeSlot(): void {
+  activeScrapes = Math.max(0, activeScrapes - 1);
   const next = scrapeQueue.shift();
-  if (next) {
-    next();
-  } else {
-    activeScrapes = Math.max(0, activeScrapes - 1);
-  }
+  if (next) next();
 }
 
 // ── CORS Configuration ──────────────────────────────────────────────────────
@@ -75,8 +72,9 @@ server.post("/scrape", async (request, reply) => {
       return reply.status(400).send({ error: "URL is required" });
     }
 
-    server.log.info(`Scraping started for: ${url}${imageUrl ? ` with direct image: ${imageUrl}` : ''} [queue=${scrapeQueue.length} active=${activeScrapes}]`);
+    server.log.info(`Scrape queued for: ${url} [queue=${scrapeQueue.length} active=${activeScrapes}/${MAX_CONCURRENT_SCRAPES}]`);
     await acquireScrapeSlot();
+    server.log.info(`Scraping started for: ${url} [active=${activeScrapes}/${MAX_CONCURRENT_SCRAPES}]`);
     let scrapedData: Awaited<ReturnType<typeof scrapePerfumePage>>;
     try {
       scrapedData = await scrapePerfumePage(url, imageUrl);
