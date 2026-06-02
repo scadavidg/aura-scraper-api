@@ -32,6 +32,7 @@ const server = fastify({ logger: true });
 const MAX_CONCURRENT_SCRAPES = parseInt(process.env.MAX_CONCURRENT_SCRAPES ?? "2", 10);
 let activeScrapes = 0;
 const scrapeQueue: Array<() => void> = [];
+const inFlightUrls = new Set<string>();
 
 function acquireScrapeSlot(): Promise<void> {
   return new Promise((resolve) => {
@@ -72,6 +73,12 @@ server.post("/scrape", async (request, reply) => {
       return reply.status(400).send({ error: "URL is required" });
     }
 
+    if (inFlightUrls.has(url)) {
+      server.log.warn(`Duplicate scrape rejected: ${url}`);
+      return reply.status(409).send({ error: "Esta URL ya tiene un scraping en proceso. Espera a que termine." });
+    }
+
+    inFlightUrls.add(url);
     server.log.info(`Scrape queued for: ${url} [queue=${scrapeQueue.length} active=${activeScrapes}/${MAX_CONCURRENT_SCRAPES}]`);
     await acquireScrapeSlot();
     server.log.info(`Scraping started for: ${url} [active=${activeScrapes}/${MAX_CONCURRENT_SCRAPES}]`);
@@ -80,6 +87,7 @@ server.post("/scrape", async (request, reply) => {
       scrapedData = await scrapePerfumePage(url, imageUrl);
     } finally {
       releaseScrapeSlot();
+      inFlightUrls.delete(url);
     }
 
     // Safety net 1: strip tester/decant variants the LLM included despite prompt instructions.
