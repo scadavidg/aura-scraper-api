@@ -36,7 +36,7 @@ if (otlpEndpoint) {
     resource: resourceFromAttributes({
       [ATTR_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME || "scraper-api",
       [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]:
-        process.env.DEPLOYMENT_ENVIRONMENT || "prod",
+        process.env.DEPLOYMENT_ENVIRONMENT || "PROD",
     }),
     traceExporter: new OTLPTraceExporter(),
     instrumentations: [
