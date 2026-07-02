@@ -1,3 +1,5 @@
+// OTel: debe ir PRIMERO, antes de cualquier import instrumentable (http/fastify/pino).
+import "./instrumentation";
 import fastify from "fastify";
 import fastifyStatic from "@fastify/static";
 import fastifyCors from "@fastify/cors";
