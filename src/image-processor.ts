@@ -2,6 +2,7 @@ import sharp from 'sharp';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import fs from 'fs';
 import path from 'path';
+import { logger } from './logger';
 
 // Initialize S3 Client
 const s3Client = new S3Client({
@@ -203,7 +204,7 @@ export async function processAndUploadImage(imageUrl: string, productName: strin
             console.log(`Temporary image deleted: ${filename}`);
           }
         } catch (err) {
-          console.error(`Error deleting temporary image ${filename}:`, err);
+          logger.error({ err }, `Error deleting temporary image ${filename}`);
         }
       }, 3 * 60 * 1000);
 
@@ -212,7 +213,9 @@ export async function processAndUploadImage(imageUrl: string, productName: strin
     }
 
   } catch (error) {
-    console.error("Error processing image:", error);
+    // Error tragado (se devuelve la URL original): pino en vez de console.error
+    // para que viaje con trace context al pipeline OTel → Loki.
+    logger.error({ err: error }, "Error processing image");
     return imageUrl;
   }
 }
@@ -267,7 +270,7 @@ export async function validateAndOptimizeImageData(
       optimizedSizeKB,
     };
   } catch (error) {
-    console.error("Error validating/optimizing image:", error);
+    logger.error({ err: error }, "Error validating/optimizing image");
     throw error;
   }
 }

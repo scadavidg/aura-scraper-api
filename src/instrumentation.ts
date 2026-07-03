@@ -5,10 +5,14 @@
  * módulo, para que las auto-instrumentaciones puedan parchear http/fastify/pino
  * al ser requeridos después.
  *
- * Exporta trazas y métricas por OTLP/HTTP al colector Grafana Alloy en la red
- * interna de Railway:
+ * Exporta trazas, métricas y logs por OTLP/HTTP al colector Grafana Alloy en la
+ * red interna de Railway:
  *   OTEL_EXPORTER_OTLP_ENDPOINT=http://aura-observability-collector.railway.internal:4318
- * (los exporters le agregan /v1/traces y /v1/metrics respectivamente).
+ * (los exporters le agregan /v1/traces, /v1/metrics y /v1/logs respectivamente).
+ *
+ * Logs: la instrumentación de Pino reenvía los logs del servicio al pipeline
+ * OTel (→ Loki). Para no quemar cuota de Loki se filtra a severidad >= WARN
+ * antes del batch (INFO/DEBUG se descartan; siguen saliendo por stdout).
  *
  * Servicio compartido (1 solo prod, recibe tráfico prod+staging): el ambiente
  * por-request se marca vía baggage/atributo `aura.caller_env` desde el header
@@ -24,10 +28,18 @@ import {
 } from "@opentelemetry/semantic-conventions/incubating"
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-proto"
 import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-proto"
+import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-proto"
 import {
   PeriodicExportingMetricReader,
   AggregationType,
 } from "@opentelemetry/sdk-metrics"
+import {
+  BatchLogRecordProcessor,
+  type LogRecordProcessor,
+  type SdkLogRecord,
+} from "@opentelemetry/sdk-logs"
+import { SeverityNumber } from "@opentelemetry/api-logs"
+import type { Context } from "@opentelemetry/api"
 import { HttpInstrumentation } from "@opentelemetry/instrumentation-http"
 import { FastifyInstrumentation } from "@opentelemetry/instrumentation-fastify"
 import { PinoInstrumentation } from "@opentelemetry/instrumentation-pino"
@@ -35,6 +47,33 @@ import { PinoInstrumentation } from "@opentelemetry/instrumentation-pino"
 const otlpEndpoint =
   process.env.OTEL_EXPORTER_OTLP_ENDPOINT ||
   process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
+
+/**
+ * Wrapper de LogRecordProcessor que descarta registros por debajo de una
+ * severidad mínima ANTES de que entren al batch/export. Evita mandar
+ * INFO/DEBUG (ruido de Fastify por-request) a Loki y quemar cuota; a Loki
+ * solo llegan WARN/ERROR/FATAL. Los logs completos siguen en stdout (Railway).
+ */
+class MinSeverityLogProcessor implements LogRecordProcessor {
+  constructor(
+    private readonly inner: LogRecordProcessor,
+    private readonly minSeverity: SeverityNumber
+  ) {}
+
+  onEmit(logRecord: SdkLogRecord, context?: Context): void {
+    const severity = logRecord.severityNumber ?? SeverityNumber.UNSPECIFIED
+    if (severity < this.minSeverity) return
+    this.inner.onEmit(logRecord, context)
+  }
+
+  forceFlush(): Promise<void> {
+    return this.inner.forceFlush()
+  }
+
+  shutdown(): Promise<void> {
+    return this.inner.shutdown()
+  }
+}
 
 if (otlpEndpoint) {
   const sdk = new NodeSDK({
@@ -66,11 +105,21 @@ if (otlpEndpoint) {
         },
       },
     ],
+    // Logs → OTLP (/v1/logs) → Alloy → Loki. El wrapper filtra a >= WARN
+    // antes del BatchLogRecordProcessor para no quemar cuota de Loki.
+    logRecordProcessors: [
+      new MinSeverityLogProcessor(
+        new BatchLogRecordProcessor(new OTLPLogExporter()),
+        SeverityNumber.WARN
+      ),
+    ],
     instrumentations: [
       new HttpInstrumentation(),
       new FastifyInstrumentation(),
-      // Inyecta trace_id/span_id en los logs de Pino para correlación.
-      new PinoInstrumentation(),
+      // Inyecta trace_id/span_id en los logs de Pino para correlación y
+      // reenvía cada log al LoggerProvider global (disableLogSending: false
+      // es el default en 0.65.x; explícito para dejar la intención clara).
+      new PinoInstrumentation({ disableLogSending: false }),
     ],
   })
 

@@ -8,6 +8,7 @@ import dotenv from "dotenv";
 import { PerfumeSchema } from "./schema";
 import { processAndUploadImage } from "./image-processor";
 import { timeProviderCall } from "./metrics";
+import { logger } from "./logger";
 
 dotenv.config();
 
@@ -60,7 +61,8 @@ async function searchProductImages(perfumeName: string): Promise<string[]> {
       }
       console.log(`[image-search] 0 resultados para "${q}", probando fallback…`);
     } catch (error) {
-      console.error(`[image-search] error en "${q}":`, error);
+      // pino (no console.error): viaja con trace context al pipeline OTel → Loki.
+      logger.error({ err: error }, `[image-search] error en "${q}"`);
     }
   }
   return [];
