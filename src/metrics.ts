@@ -13,6 +13,16 @@
  * derivado del header `x-aura-env` (fallback "PROD").
  */
 import { metrics, type Counter, type Histogram } from "@opentelemetry/api"
+import { AsyncLocalStorage } from "async_hooks"
+
+/**
+ * Contexto por-request del entorno del caller. Se fija una vez por request
+ * (hook onRequest en index.ts) y lo leen las métricas de proveedor, que se
+ * disparan en lo hondo del flujo (scraper.ts) sin acceso al `request`.
+ * Así `aura_provider_request_duration_ms` lleva `caller_env` igual que
+ * `aura_scraper_requests_total`, y el dashboard lo puede filtrar por entorno.
+ */
+export const callerEnvStore = new AsyncLocalStorage<CallerEnv>()
 
 // ── Enums de labels ─────────────────────────────────────────────────────────
 
@@ -103,9 +113,12 @@ export function recordProviderDuration(
 ): void {
   try {
     if (!Number.isFinite(durationMs) || durationMs < 0) return
+    // caller_env del contexto de request; fallback "PROD" (histórico del servicio compartido).
+    const callerEnv = callerEnvStore.getStore() ?? "PROD"
     getMeterInstruments().providerDurationMs.record(durationMs, {
       provider,
       operation,
+      caller_env: callerEnv,
     })
   } catch {
     // Las métricas nunca lanzan.
