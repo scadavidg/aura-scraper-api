@@ -7,6 +7,7 @@ import { z } from "zod";
 import dotenv from "dotenv";
 import { PerfumeSchema } from "./schema";
 import { processAndUploadImage } from "./image-processor";
+import { timeProviderCall } from "./metrics";
 
 dotenv.config();
 
@@ -24,11 +25,13 @@ if (!process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
 }
 
 async function tavilyImageSearch(query: string): Promise<string[]> {
-  const response = await tvly.search(query, {
-    searchDepth: "advanced",
-    includeImages: true,
-    maxResults: 10,
-  });
+  const response = await timeProviderCall("tavily", "image_search", () =>
+    tvly.search(query, {
+      searchDepth: "advanced",
+      includeImages: true,
+      maxResults: 10,
+    })
+  );
   const images = (response.images as any[]) || [];
   const urls: string[] = [];
   for (const img of images) {
@@ -104,7 +107,11 @@ export async function scrapePerfumePage(url: string, directImageUrl?: string) {
     // --- FASE 1: THE MINER (Gemini 2.5 Flash-Lite via OpenRouter) ---
     // Extracción de datos técnicos estructurados
     console.log("Fase 1: Extrayendo datos técnicos con Gemini 2.5 Flash-Lite...");
-    const { object: technicalData } = await generateObject({
+    const { object: technicalData } = await timeProviderCall(
+      "llm",
+      "extract_technical_data",
+      () =>
+        generateObject({
       model: openrouter("google/gemini-2.5-flash-lite"),
       schema: PerfumeSchema,
       system: "Eres un extractor de datos ultra-preciso. Tu misión es extraer datos técnicos de perfumes sin inventar nada.",
@@ -132,13 +139,18 @@ INSTRUCCIONES:
 3. Genera un handle único en minúsculas con guiones.
 4. El campo 'descripcion': extrae literalmente el texto descriptivo del producto que aparece en la página (el párrafo o párrafos que describen el perfume, su historia, sus notas, su personalidad). NO lo inventes. Si no hay descripción visible, déjalo vacío.
 5. Retorna 4 arrays del mismo tamaño: 'variantes', 'precios', 'precios_descuento' y 'disponibilidad'.`
-    });
+        })
+    );
 
     // --- FASE 2: THE CREATIVE (DeepSeek-V3 via OpenRouter) ---
     // Paráfrasis + enriquecimiento de la descripción original
     console.log("Fase 2: Generando descripción creativa con DeepSeek-V3...");
     const hasOriginalDesc = technicalData.descripcion && technicalData.descripcion.trim().length > 20;
-    const { text: creativeDescription } = await generateText({
+    const { text: creativeDescription } = await timeProviderCall(
+      "llm",
+      "creative_description",
+      () =>
+        generateText({
       model: openrouter("deepseek/deepseek-chat"),
       system: "Eres un copywriter experto en perfumería de lujo. Crea textos seductores, elegantes y persuasivos en español.",
       prompt: hasOriginalDesc
@@ -167,7 +179,8 @@ Acordes: ${technicalData.acordes || "no especificados"}
 Concentración: ${technicalData.concentracion || "no especificada"}
 
 REGLAS: máximo 180 palabras, español sofisticado de alta perfumería, 2-3 párrafos cortos, sin títulos ni bullets.`
-    });
+        })
+    );
 
     technicalData.descripcion = creativeDescription;
 

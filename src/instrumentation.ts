@@ -5,10 +5,10 @@
  * módulo, para que las auto-instrumentaciones puedan parchear http/fastify/pino
  * al ser requeridos después.
  *
- * Exporta trazas por OTLP/HTTP al colector Grafana Alloy en la red interna de
- * Railway:
+ * Exporta trazas y métricas por OTLP/HTTP al colector Grafana Alloy en la red
+ * interna de Railway:
  *   OTEL_EXPORTER_OTLP_ENDPOINT=http://aura-observability-collector.railway.internal:4318
- * (el exporter le agrega /v1/traces).
+ * (los exporters le agregan /v1/traces y /v1/metrics respectivamente).
  *
  * Servicio compartido (1 solo prod, recibe tráfico prod+staging): el ambiente
  * por-request se marca vía baggage/atributo `aura.caller_env` desde el header
@@ -23,6 +23,11 @@ import {
   ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
 } from "@opentelemetry/semantic-conventions/incubating"
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-proto"
+import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-proto"
+import {
+  PeriodicExportingMetricReader,
+  AggregationType,
+} from "@opentelemetry/sdk-metrics"
 import { HttpInstrumentation } from "@opentelemetry/instrumentation-http"
 import { FastifyInstrumentation } from "@opentelemetry/instrumentation-fastify"
 import { PinoInstrumentation } from "@opentelemetry/instrumentation-pino"
@@ -39,6 +44,28 @@ if (otlpEndpoint) {
         process.env.DEPLOYMENT_ENVIRONMENT || "PROD",
     }),
     traceExporter: new OTLPTraceExporter(),
+    // Métricas custom aura_* (ver src/metrics.ts) — export cada 30s al mismo
+    // endpoint base OTLP (el exporter le agrega /v1/metrics).
+    metricReaders: [
+      new PeriodicExportingMetricReader({
+        exporter: new OTLPMetricExporter(),
+        exportIntervalMillis: 30_000,
+      }),
+    ],
+    views: [
+      // Buckets explícitos en ms para todos los histogramas aura_*_duration_ms.
+      {
+        instrumentName: "aura_*_duration_ms",
+        aggregation: {
+          type: AggregationType.EXPLICIT_BUCKET_HISTOGRAM,
+          options: {
+            boundaries: [
+              5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000, 30000,
+            ],
+          },
+        },
+      },
+    ],
     instrumentations: [
       new HttpInstrumentation(),
       new FastifyInstrumentation(),
