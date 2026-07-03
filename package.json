@@ -40,6 +40,7 @@
     "@opentelemetry/sdk-metrics": "^2.8.0",
     "@opentelemetry/sdk-node": "^0.219.0",
     "@opentelemetry/semantic-conventions": "^1.41.1",
+    "@sentry/node": "^10.63.0",
     "@tavily/core": "^0.7.3",
     "ai": "^6.0.171",
     "dotenv": "^17.4.2",

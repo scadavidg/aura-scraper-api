@@ -1,6 +1,11 @@
 // OTel: debe ir PRIMERO, antes de cualquier import instrumentable (http/fastify/pino).
 import "./instrumentation";
-import fastify from "fastify";
+import * as Sentry from "@sentry/node";
+import fastify, {
+  type FastifyError,
+  type FastifyReply,
+  type FastifyRequest,
+} from "fastify";
 import fastifyStatic from "@fastify/static";
 import fastifyCors from "@fastify/cors";
 import path from "path";
@@ -68,6 +73,26 @@ server.register(fastifyCors, {
 server.register(fastifyStatic, {
   root: path.join(process.cwd(), "temp_images"),
   prefix: "/temp/",
+});
+
+// ── Error handler global (red de seguridad) ─────────────────────────────────
+// Los handlers de cada ruta ya tienen su try/catch propio (y ahí se captura a
+// Sentry con el tag operation). Este handler cubre lo que escape de esos
+// try/catch: errores de parsing del body, hooks, plugins, etc. Solo se reporta
+// a Sentry lo que no sea un 4xx esperable; la respuesta al cliente es la misma
+// que daría el error handler default de Fastify (statusCode del error o 500).
+server.setErrorHandler((error: FastifyError, request: FastifyRequest, reply: FastifyReply) => {
+  const statusCode = error.statusCode ?? 500;
+  if (statusCode >= 500) {
+    Sentry.captureException(error, {
+      tags: {
+        caller_env: callerEnvFromHeader(request.headers["x-aura-env"]),
+        operation: request.routeOptions?.url ?? "unknown",
+      },
+    });
+  }
+  request.log.error(error);
+  return reply.status(statusCode).send(error);
 });
 
 // ── POST /scrape ──────────────────────────────────────────────────────────
@@ -168,6 +193,11 @@ server.post("/scrape", async (request, reply) => {
       data: scrapedData,
     });
   } catch (error) {
+    // Fallo completo del scrape (Playwright, LLM Fase 1/2, etc.) — además del
+    // log pino, se reporta a Sentry con contexto de operación y caller.
+    Sentry.captureException(error, {
+      tags: { caller_env: callerEnv, operation: "scrape" },
+    });
     server.log.error(error);
     recordScraperRequest("scrape", "error", callerEnv);
     return reply.status(500).send({ error: "Failed to scrape the page" });
@@ -269,6 +299,9 @@ server.post("/confirm-scrape", async (request, reply) => {
       validatedData: confirmedData,
     });
   } catch (error) {
+    Sentry.captureException(error, {
+      tags: { caller_env: callerEnv, operation: "confirm_scrape" },
+    });
     server.log.error(error);
     recordScraperRequest("confirm_scrape", "error", callerEnv);
     return reply.status(500).send({ error: "Failed to confirm scrape" });
@@ -310,6 +343,9 @@ server.post("/search-images", async (request, reply) => {
     recordScraperRequest("search_images", "success", callerEnv);
     return reply.status(200).send({ images });
   } catch (error) {
+    Sentry.captureException(error, {
+      tags: { caller_env: callerEnv, operation: "search_images" },
+    });
     server.log.error(error);
     recordScraperRequest("search_images", "error", callerEnv);
     return reply.status(500).send({ error: "Failed to search images" });

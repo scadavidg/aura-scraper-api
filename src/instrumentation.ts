@@ -40,6 +40,49 @@ import type { Context } from "@opentelemetry/api"
 import { HttpInstrumentation } from "@opentelemetry/instrumentation-http"
 import { FastifyInstrumentation } from "@opentelemetry/instrumentation-fastify"
 import { PinoInstrumentation } from "@opentelemetry/instrumentation-pino"
+import * as Sentry from "@sentry/node"
+
+// ── Sentry (solo captura de errores) ────────────────────────────────────────
+// Se inicializa ANTES del NodeSDK: skipOpenTelemetrySetup evita que Sentry
+// monte su propia instrumentación OTel (este archivo ya monta la suya contra
+// Grafana Alloy). tracesSampleRate: 0 → cero tracing de Sentry; solo errores
+// vía Sentry.captureException (ver setErrorHandler y catches en src/index.ts).
+// Sin SENTRY_DSN es no-op total (seguro en local, igual que el bloque OTel).
+const sentryDsn = process.env.SENTRY_DSN
+
+if (sentryDsn) {
+  // Dedupe por tipo+mensaje: máximo 1 evento idéntico cada 5 minutos, para no
+  // quemar cuota cuando un scrape roto se reintenta en loop desde price-manager.
+  const DEDUPE_WINDOW_MS = 5 * 60 * 1000
+  const lastSentByKey = new Map<string, number>()
+
+  Sentry.init({
+    dsn: sentryDsn,
+    environment: process.env.DEPLOYMENT_ENVIRONMENT || "PROD",
+    skipOpenTelemetrySetup: true,
+    tracesSampleRate: 0,
+    sampleRate: 1.0,
+    beforeSend(event) {
+      const exception = event.exception?.values?.[0]
+      const key = `${exception?.type ?? event.message ?? "unknown"}:${
+        exception?.value ?? ""
+      }`
+      const now = Date.now()
+      const lastSent = lastSentByKey.get(key)
+      if (lastSent !== undefined && now - lastSent < DEDUPE_WINDOW_MS) {
+        return null
+      }
+      // Poda de claves expiradas para que el Map no crezca sin límite.
+      if (lastSentByKey.size > 500) {
+        for (const [k, t] of lastSentByKey) {
+          if (now - t >= DEDUPE_WINDOW_MS) lastSentByKey.delete(k)
+        }
+      }
+      lastSentByKey.set(key, now)
+      return event
+    },
+  })
+}
 
 const otlpEndpoint =
   process.env.OTEL_EXPORTER_OTLP_ENDPOINT ||
