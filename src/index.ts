@@ -15,6 +15,11 @@ import {
 } from "./session-store";
 import { validateAndOptimizeImageData, processAndUploadImage } from "./image-processor";
 import { authMiddleware, isValidToken, registerToken } from "./auth";
+import {
+  callerEnvFromHeader,
+  recordScraperRequest,
+  timeProviderCall,
+} from "./metrics";
 import { tavily } from "@tavily/core";
 
 dotenv.config();
@@ -67,15 +72,18 @@ server.register(fastifyStatic, {
 
 // ── POST /scrape ──────────────────────────────────────────────────────────
 server.post("/scrape", async (request, reply) => {
+  const callerEnv = callerEnvFromHeader(request.headers["x-aura-env"]);
   try {
     const { url, imageUrl } = request.body as { url: string; imageUrl?: string };
 
     if (!url) {
+      recordScraperRequest("scrape", "bad_request", callerEnv);
       return reply.status(400).send({ error: "URL is required" });
     }
 
     if (inFlightUrls.has(url)) {
       server.log.warn(`Duplicate scrape rejected: ${url}`);
+      recordScraperRequest("scrape", "duplicate", callerEnv);
       return reply.status(409).send({ error: "Esta URL ya tiene un scraping en proceso. Espera a que termine." });
     }
 
@@ -85,7 +93,10 @@ server.post("/scrape", async (request, reply) => {
     server.log.info(`Scraping started for: ${url} [active=${activeScrapes}/${MAX_CONCURRENT_SCRAPES}]`);
     let scrapedData: Awaited<ReturnType<typeof scrapePerfumePage>>;
     try {
-      scrapedData = await scrapePerfumePage(url, imageUrl);
+      // Duración del flujo de scraping propio (Playwright + LLM + búsqueda de imagen).
+      scrapedData = await timeProviderCall("scraper", "scrape", () =>
+        scrapePerfumePage(url, imageUrl)
+      );
     } finally {
       releaseScrapeSlot();
       inFlightUrls.delete(url);
@@ -151,21 +162,25 @@ server.post("/scrape", async (request, reply) => {
     // Create session to track this scrape
     const sessionId = createSession(scrapedData);
 
+    recordScraperRequest("scrape", "success", callerEnv);
     return reply.status(200).send({
       sessionId,
       data: scrapedData,
     });
   } catch (error) {
     server.log.error(error);
+    recordScraperRequest("scrape", "error", callerEnv);
     return reply.status(500).send({ error: "Failed to scrape the page" });
   }
 });
 
 // ── POST /confirm-scrape ──────────────────────────────────────────────────
 server.post("/confirm-scrape", async (request, reply) => {
+  const callerEnv = callerEnvFromHeader(request.headers["x-aura-env"]);
   try {
     // Auth check
     if (!isValidToken(request.headers.authorization?.replace("Bearer ", ""))) {
+      recordScraperRequest("confirm_scrape", "unauthorized", callerEnv);
       return reply.status(401).send({
         error: "Unauthorized",
         message: "Missing or invalid API token",
@@ -178,6 +193,7 @@ server.post("/confirm-scrape", async (request, reply) => {
     };
 
     if (!data) {
+      recordScraperRequest("confirm_scrape", "bad_request", callerEnv);
       return reply.status(400).send({
         error: "data is required",
       });
@@ -190,6 +206,7 @@ server.post("/confirm-scrape", async (request, reply) => {
     // Validate data against schema
     const validationResult = PerfumeSchema.safeParse(data);
     if (!validationResult.success) {
+      recordScraperRequest("confirm_scrape", "bad_request", callerEnv);
       return reply.status(400).send({
         error: "Invalid data",
         details: validationResult.error.issues,
@@ -230,6 +247,7 @@ server.post("/confirm-scrape", async (request, reply) => {
           server.log.info(`Image uploaded to S3: ${s3Url}`);
         }
       } catch (imgError: any) {
+        recordScraperRequest("confirm_scrape", "bad_request", callerEnv);
         return reply.status(400).send({
           error: "Image processing failed",
           details: imgError.message,
@@ -244,6 +262,7 @@ server.post("/confirm-scrape", async (request, reply) => {
 
     server.log.info(`Scrape confirmed${sessionId ? ` (session ${sessionId})` : " (sessionless)"}`);
 
+    recordScraperRequest("confirm_scrape", "success", callerEnv);
     return reply.status(200).send({
       success: true,
       sessionId,
@@ -251,28 +270,34 @@ server.post("/confirm-scrape", async (request, reply) => {
     });
   } catch (error) {
     server.log.error(error);
+    recordScraperRequest("confirm_scrape", "error", callerEnv);
     return reply.status(500).send({ error: "Failed to confirm scrape" });
   }
 });
 
 // ── POST /search-images ───────────────────────────────────────────────────────
 server.post("/search-images", async (request, reply) => {
+  const callerEnv = callerEnvFromHeader(request.headers["x-aura-env"]);
   try {
     if (!isValidToken(request.headers.authorization?.replace("Bearer ", ""))) {
+      recordScraperRequest("search_images", "unauthorized", callerEnv);
       return reply.status(401).send({ error: "Unauthorized" });
     }
 
     const { query } = request.body as { query?: string };
     if (!query?.trim()) {
+      recordScraperRequest("search_images", "bad_request", callerEnv);
       return reply.status(400).send({ error: "query is required" });
     }
 
     const tvly = tavily({ apiKey: process.env.TAVILY_API_KEY });
-    const response = await tvly.search(query.trim(), {
-      searchDepth: "advanced",
-      includeImages: true,
-      maxResults: 10,
-    });
+    const response = await timeProviderCall("tavily", "search_images", () =>
+      tvly.search(query.trim(), {
+        searchDepth: "advanced",
+        includeImages: true,
+        maxResults: 10,
+      })
+    );
 
     const images: string[] = [];
     for (const img of (response.images as any[]) || []) {
@@ -282,9 +307,11 @@ server.post("/search-images", async (request, reply) => {
       }
     }
 
+    recordScraperRequest("search_images", "success", callerEnv);
     return reply.status(200).send({ images });
   } catch (error) {
     server.log.error(error);
+    recordScraperRequest("search_images", "error", callerEnv);
     return reply.status(500).send({ error: "Failed to search images" });
   }
 });
