@@ -22,10 +22,7 @@
  */
 import { NodeSDK } from "@opentelemetry/sdk-node"
 import { resourceFromAttributes } from "@opentelemetry/resources"
-import {
-  ATTR_SERVICE_NAME,
-  ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
-} from "@opentelemetry/semantic-conventions/incubating"
+import { ATTR_SERVICE_NAME } from "@opentelemetry/semantic-conventions"
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-proto"
 import { OTLPMetricExporter } from "@opentelemetry/exporter-metrics-otlp-proto"
 import { OTLPLogExporter } from "@opentelemetry/exporter-logs-otlp-proto"
@@ -79,8 +76,10 @@ if (otlpEndpoint) {
   const sdk = new NodeSDK({
     resource: resourceFromAttributes({
       [ATTR_SERVICE_NAME]: process.env.OTEL_SERVICE_NAME || "scraper-api",
-      [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]:
-        process.env.DEPLOYMENT_ENVIRONMENT || "PROD",
+      // Convención vieja "deployment.environment" a propósito: es la que usan
+      // backend/notification y la que el gateway de Grafana promueve al label
+      // deployment_environment (la incubating "…environment.name" genera otro label).
+      "deployment.environment": process.env.DEPLOYMENT_ENVIRONMENT || "PROD",
     }),
     traceExporter: new OTLPTraceExporter(),
     // Métricas custom aura_* (ver src/metrics.ts) — export cada 30s al mismo

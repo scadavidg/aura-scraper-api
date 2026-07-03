@@ -47,9 +47,10 @@ function getMeterInstruments(): {
     providerDurationMs = meter.createHistogram(
       "aura_provider_request_duration_ms",
       {
+        // Sin `unit`: el nombre ya termina en _ms y el gateway OTLP de Grafana
+        // agregaría el sufijo _milliseconds, duplicando la unidad en Prometheus.
         description:
           "Duración en ms de llamadas a proveedores externos e internos (scraper propio, tavily, llm)",
-        unit: "ms",
       }
     )
   }
