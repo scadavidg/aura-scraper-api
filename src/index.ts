@@ -17,6 +17,7 @@ import { validateAndOptimizeImageData, processAndUploadImage } from "./image-pro
 import { authMiddleware, isValidToken, registerToken } from "./auth";
 import {
   callerEnvFromHeader,
+  callerEnvStore,
   recordScraperRequest,
   timeProviderCall,
 } from "./metrics";
@@ -31,6 +32,19 @@ if (process.env.SCRAPER_API_TOKEN) {
 }
 
 const server = fastify({ logger: true });
+
+// Fija el caller_env (header x-aura-env) en AsyncLocalStorage por la vida del
+// request, para que las métricas de proveedor (disparadas en scraper.ts) lleven
+// caller_env sin propagar el parámetro por toda la cadena de llamadas.
+server.addHook("onRequest", (request, _reply, done) => {
+  callerEnvStore.enterWith(callerEnvFromHeader(request.headers["x-aura-env"]));
+  done();
+});
+
+// Healthcheck público para uptime (Better Stack). Sin auth, sin efectos.
+server.get("/health", async (_request, reply) => {
+  return reply.status(200).send({ status: "ok", service: "aura-scraper-api" });
+});
 
 // Semáforo de concurrencia — máx 2 instancias de Chromium simultáneas.
 // Cada request a /scrape espera su turno; sin esto el container se queda sin
