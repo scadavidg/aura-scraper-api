@@ -26,7 +26,12 @@ export const callerEnvStore = new AsyncLocalStorage<CallerEnv>()
 
 // ── Enums de labels ─────────────────────────────────────────────────────────
 
-export type ScraperOperation = "scrape" | "confirm_scrape" | "search_images"
+export type ScraperOperation =
+  | "scrape"
+  | "confirm_scrape"
+  | "search_images"
+  | "sync_prices"
+  | "search_urls"
 
 export type ScraperRequestStatus =
   | "success"
@@ -35,7 +40,7 @@ export type ScraperRequestStatus =
   | "unauthorized"
   | "duplicate"
 
-export type ProviderName = "scraper" | "tavily" | "llm"
+export type ProviderName = "scraper" | "tavily" | "llm" | "provider_shop"
 
 export type CallerEnv = "PROD" | "STAGING" | "DEV" | "OTHER"
 
