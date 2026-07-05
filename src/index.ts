@@ -27,6 +27,7 @@ import {
   timeProviderCall,
 } from "./metrics";
 import { tavily } from "@tavily/core";
+import { syncPrices } from "./sync";
 
 dotenv.config();
 
@@ -363,6 +364,118 @@ server.post("/search-images", async (request, reply) => {
     server.log.error(error);
     recordScraperRequest("search_images", "error", callerEnv);
     return reply.status(500).send({ error: "Failed to search images" });
+  }
+});
+
+// ── POST /sync-prices ─────────────────────────────────────────────────────
+// Sync ligero de precio + disponibilidad: fetch determinista al JSON público
+// de Shopify (<url>.js), sin Playwright ni LLM. Batch de hasta 20 URLs; el
+// caller (job del backend Medusa) itera los chunks. Rate limiting en sync.ts.
+const SYNC_PRICES_MAX_URLS = 20;
+
+server.post("/sync-prices", async (request, reply) => {
+  const callerEnv = callerEnvFromHeader(request.headers["x-aura-env"]);
+  try {
+    if (!isValidToken(request.headers.authorization?.replace("Bearer ", ""))) {
+      recordScraperRequest("sync_prices", "unauthorized", callerEnv);
+      return reply.status(401).send({ error: "Unauthorized" });
+    }
+
+    const { urls } = request.body as { urls?: unknown };
+    if (!Array.isArray(urls) || urls.length === 0 || !urls.every((u) => typeof u === "string" && u.trim())) {
+      recordScraperRequest("sync_prices", "bad_request", callerEnv);
+      return reply.status(400).send({ error: "urls must be a non-empty array of strings" });
+    }
+    if (urls.length > SYNC_PRICES_MAX_URLS) {
+      recordScraperRequest("sync_prices", "bad_request", callerEnv);
+      return reply.status(400).send({
+        error: `Máximo ${SYNC_PRICES_MAX_URLS} URLs por request (recibidas: ${urls.length}). Itera en chunks.`,
+      });
+    }
+
+    const response = await timeProviderCall("provider_shop", "sync_prices", () =>
+      syncPrices(urls.map((u) => u.trim()))
+    );
+
+    const okCount = response.results.filter((r) => r.status === "ok").length;
+    server.log.info(
+      `[sync-prices] ${okCount}/${urls.length} ok, aborted=${response.aborted} [caller=${callerEnv}]`
+    );
+
+    recordScraperRequest("sync_prices", "success", callerEnv);
+    return reply.status(200).send(response);
+  } catch (error) {
+    Sentry.captureException(error, {
+      tags: { caller_env: callerEnv, operation: "sync_prices" },
+    });
+    server.log.error(error);
+    recordScraperRequest("sync_prices", "error", callerEnv);
+    return reply.status(500).send({ error: "Failed to sync prices" });
+  }
+});
+
+// ── POST /search-urls ─────────────────────────────────────────────────────
+// Búsqueda semántica de la URL de un producto en el sitio del proveedor
+// (Tavily con site:), para el URL Manager del price-manager.
+server.post("/search-urls", async (request, reply) => {
+  const callerEnv = callerEnvFromHeader(request.headers["x-aura-env"]);
+  try {
+    if (!isValidToken(request.headers.authorization?.replace("Bearer ", ""))) {
+      recordScraperRequest("search_urls", "unauthorized", callerEnv);
+      return reply.status(401).send({ error: "Unauthorized" });
+    }
+
+    const { query, limit } = request.body as { query?: string; limit?: number };
+    if (!query?.trim()) {
+      recordScraperRequest("search_urls", "bad_request", callerEnv);
+      return reply.status(400).send({ error: "query is required" });
+    }
+    const maxResults = Math.min(Math.max(parseInt(String(limit ?? 5), 10) || 5, 1), 10);
+
+    const searchHost = (process.env.SYNC_SEARCH_HOST || "disfragancias.com").trim();
+
+    const tvly = tavily({ apiKey: process.env.TAVILY_API_KEY });
+    const response = await timeProviderCall("tavily", "search_urls", () =>
+      tvly.search(`site:${searchHost} ${query.trim()}`, {
+        searchDepth: "basic",
+        maxResults: 10,
+      })
+    );
+
+    const seen = new Set<string>();
+    const results: { title: string; url: string; score: number | null }[] = [];
+    for (const r of (response.results as any[]) || []) {
+      const url = typeof r?.url === "string" ? r.url : null;
+      if (!url) continue;
+      let parsed: URL;
+      try {
+        parsed = new URL(url);
+      } catch {
+        continue;
+      }
+      // Solo URLs de producto del host del proveedor
+      if (!parsed.hostname.toLowerCase().endsWith(searchHost.toLowerCase())) continue;
+      if (!parsed.pathname.includes("/products/")) continue;
+      const clean = `${parsed.origin}${parsed.pathname.replace(/\/$/, "")}`;
+      if (seen.has(clean)) continue;
+      seen.add(clean);
+      results.push({
+        title: typeof r?.title === "string" ? r.title : clean,
+        url: clean,
+        score: typeof r?.score === "number" ? r.score : null,
+      });
+      if (results.length >= maxResults) break;
+    }
+
+    recordScraperRequest("search_urls", "success", callerEnv);
+    return reply.status(200).send({ results });
+  } catch (error) {
+    Sentry.captureException(error, {
+      tags: { caller_env: callerEnv, operation: "search_urls" },
+    });
+    server.log.error(error);
+    recordScraperRequest("search_urls", "error", callerEnv);
+    return reply.status(500).send({ error: "Failed to search urls" });
   }
 });
 
