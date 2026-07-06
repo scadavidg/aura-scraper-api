@@ -115,7 +115,18 @@ export async function scrapePerfumePage(url: string, directImageUrl?: string) {
       () =>
         generateObject({
       model: openrouter("google/gemini-2.5-flash-lite"),
-      schema: PerfumeSchema,
+      // El LLM NO debe rellenar campos que son IDs internos de Medusa o los añade
+      // el pipeline/UI (type_id, image, possibleImages, sourceUrl, sourceImageUrl).
+      // Dejarlos en el schema hacía que el modelo alucinara un type_id inexistente
+      // (ej. ptyb_...), rompiendo la creación del producto en Medusa. El operador
+      // elige type_id en el UI; PerfumeSchema completo se sigue usando al validar.
+      schema: PerfumeSchema.omit({
+        type_id: true,
+        image: true,
+        possibleImages: true,
+        sourceUrl: true,
+        sourceImageUrl: true,
+      }),
       system: "Eres un extractor de datos ultra-preciso. Tu misión es extraer datos técnicos de perfumes sin inventar nada.",
       prompt: `Extrae la información técnica del perfume basándote en este contenido:
       
