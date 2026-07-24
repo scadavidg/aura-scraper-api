@@ -163,13 +163,13 @@ function normalizeVariants(rawVariants: any[]): SyncVariant[] {
     let price = centsToPesos(rawPrice);
     let compareAt = rawCompareAt != null ? centsToPesos(rawCompareAt) : null;
 
-    // Sanidad: compare_at (precio tachado) debe ser >= price. Si vienen
-    // invertidos se intercambian (mismo criterio que safety net 3 de /scrape).
-    if (compareAt != null && compareAt < price) {
-      const tmp = price;
-      price = compareAt;
-      compareAt = tmp;
-    }
+    // Sanidad: compare_at (precio tachado) debe ser >= price. A diferencia del
+    // path /scrape (LLM, que puede invertir campos y ahí SÍ se hace swap), aquí
+    // leemos JSON Shopify determinista: si compare_at < price es dato sucio del
+    // proveedor (p.ej. compare_at con el precio de otra talla). Shopify mismo no
+    // lo muestra tachado. Descartar la señal, NO intercambiar (un swap fabrica
+    // una oferta ficticia — ej. 50 ML price=160000/compare=25000 → -84%).
+    if (compareAt != null && compareAt < price) compareAt = null;
     // compare_at igual al price no aporta señal de descuento
     if (compareAt != null && compareAt === price) compareAt = null;
 
