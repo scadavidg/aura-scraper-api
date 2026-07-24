@@ -2,6 +2,16 @@
 
 Todas las versiones notables de este repo. Formato: SemVer.
 
+## [1.0.1] - 2026-07-24
+
+### Fixed
+- `/sync-prices`: cuando `compare_at_price < price` se **descarta** la señal en
+  vez de intercambiar los campos (#7). Ahí no hay inversión de campos sino dato
+  sucio del proveedor (p.ej. un `compare_at` que trae el precio de otra talla),
+  y el swap fabricaba ofertas ficticias — Moonlight 50 ML (`price=160.000`,
+  `compare=25.000`) aparecía como un −84%. El propio Shopify no muestra ese
+  `compare_at` tachado.
+
 ## [1.0.0] - 2026-07-15
 
 Primera release formal. Etiqueta el estado ya en producción: scraping con
