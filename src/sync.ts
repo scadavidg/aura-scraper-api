@@ -66,6 +66,10 @@ export interface SyncUrlResult {
   url: string;
   status: SyncUrlStatus;
   fetched_at: string;
+  /** `res.url` tras seguir redirects, desnormalizado del `.js` (ver `denormalizeShopifyJsUrl`). Solo si hubo respuesta HTTP. */
+  final_url?: string;
+  /** true si `final_url` apunta a un recurso distinto al `url` pedido (ver `isSameProductUrl`). Solo si hubo respuesta HTTP. */
+  redirected?: boolean;
   http_status?: number;
   error?: string;
   product?: {
@@ -118,6 +122,51 @@ function randomDelayMs(): number {
   const min = Math.max(0, SYNC_DELAY_MIN_MS);
   const max = Math.max(min, SYNC_DELAY_MAX_MS);
   return min + Math.floor(Math.random() * (max - min + 1));
+}
+
+/**
+ * Desnormaliza `res.url` (la URL final tras seguir redirects) de vuelta a una
+ * URL "de producto". El fetch siempre pide `<url>.js`; si Shopify redirige el
+ * handle, `res.url` también termina en `.../<otro-handle>.js`. Quitamos ese
+ * sufijo para que `final_url` sea comparable/usable como URL de producto real
+ * (ej. para guardarla como nuevo `scraper_source_url`). Si por algún motivo la
+ * URL final no termina en `.js` (redirect a otra ruta), se devuelve tal cual.
+ */
+export function denormalizeShopifyJsUrl(finalUrl: string): string {
+  try {
+    const parsed = new URL(finalUrl);
+    if (parsed.pathname.endsWith(".js")) {
+      parsed.pathname = parsed.pathname.slice(0, -3);
+    }
+    return parsed.toString();
+  } catch {
+    return finalUrl;
+  }
+}
+
+/**
+ * Compara dos URLs de producto para decidir si son "la misma", ignorando lo
+ * que no cambia el recurso: mayúsculas del host (los hosts no distinguen
+ * mayúsculas), query string (ej. `?variant=`), hash, y un `/` final
+ * redundante en el path. El path SÍ es sensible a mayúsculas: Shopify trata
+ * handles con distinta capitalización como recursos distintos.
+ */
+export function isSameProductUrl(a: string, b: string): boolean {
+  try {
+    const pa = new URL(a);
+    const pb = new URL(b);
+    const normalizePath = (path: string) => path.replace(/\/+$/, "") || "/";
+    const originOf = (u: URL) => `${u.protocol}//${u.host.toLowerCase()}`;
+    return originOf(pa) === originOf(pb) && normalizePath(pa.pathname) === normalizePath(pb.pathname);
+  } catch {
+    return a === b;
+  }
+}
+
+/** Deriva `final_url`/`redirected` a partir de la respuesta HTTP recibida. */
+function finalUrlFields(response: Response, requestedUrl: string): { final_url: string; redirected: boolean } {
+  const final_url = denormalizeShopifyJsUrl(response.url);
+  return { final_url, redirected: !isSameProductUrl(final_url, requestedUrl) };
 }
 
 /** Deriva la URL del endpoint JSON de Shopify desde la URL del producto. */
@@ -239,7 +288,13 @@ async function fetchOne(productUrl: string): Promise<{ result: SyncUrlResult; ra
     if (response.status === 404) {
       // URL rota — no reintentar; el backend la marca para re-scan en el URL Manager
       return {
-        result: { url: productUrl, status: "http_404", fetched_at: fetchedAt(), http_status: 404 },
+        result: {
+          url: productUrl,
+          status: "http_404",
+          fetched_at: fetchedAt(),
+          http_status: 404,
+          ...finalUrlFields(response, productUrl),
+        },
         rateLimited: false,
       };
     }
@@ -256,6 +311,7 @@ async function fetchOne(productUrl: string): Promise<{ result: SyncUrlResult; ra
           fetched_at: fetchedAt(),
           http_status: response.status,
           error: `Rate limited (${response.status}) tras ${BACKOFF_MS.length + 1} intentos`,
+          ...finalUrlFields(response, productUrl),
         },
         rateLimited: true,
       };
@@ -269,6 +325,7 @@ async function fetchOne(productUrl: string): Promise<{ result: SyncUrlResult; ra
           fetched_at: fetchedAt(),
           http_status: response.status,
           error: `HTTP ${response.status}`,
+          ...finalUrlFields(response, productUrl),
         },
         rateLimited: false,
       };
@@ -284,6 +341,7 @@ async function fetchOne(productUrl: string): Promise<{ result: SyncUrlResult; ra
           status: "not_shopify_json",
           fetched_at: fetchedAt(),
           error: "La respuesta no es JSON válido",
+          ...finalUrlFields(response, productUrl),
         },
         rateLimited: false,
       };
@@ -296,6 +354,7 @@ async function fetchOne(productUrl: string): Promise<{ result: SyncUrlResult; ra
           status: "not_shopify_json",
           fetched_at: fetchedAt(),
           error: "El JSON no tiene el shape de producto Shopify (falta variants[])",
+          ...finalUrlFields(response, productUrl),
         },
         rateLimited: false,
       };
@@ -307,6 +366,7 @@ async function fetchOne(productUrl: string): Promise<{ result: SyncUrlResult; ra
         status: "ok",
         fetched_at: fetchedAt(),
         http_status: response.status,
+        ...finalUrlFields(response, productUrl),
         product: {
           title: String(data.title ?? ""),
           handle: String(data.handle ?? ""),
