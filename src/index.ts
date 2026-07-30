@@ -27,7 +27,7 @@ import {
   timeProviderCall,
 } from "./metrics";
 import { tavily } from "@tavily/core";
-import { syncPrices } from "./sync";
+import { syncPrices, TESTER_RE } from "./sync";
 
 dotenv.config();
 
@@ -142,10 +142,9 @@ server.post("/scrape", async (request, reply) => {
       inFlightUrls.delete(url);
     }
 
-    // Safety net 1: strip tester/decant variants the LLM included despite prompt instructions.
+    // Safety net 1: strip tester/decant/vial variants the LLM included despite prompt instructions.
     // Filter is applied to all parallel arrays so indices stay aligned.
     if (Array.isArray(scrapedData.variantes)) {
-      const TESTER_RE = /\b(tester|decant|muestra|sample)\b|\(t\)/i;
       const keepIdx: number[] = scrapedData.variantes
         .map((v: string, i: number) => (TESTER_RE.test(v) ? -1 : i))
         .filter((i: number) => i !== -1);

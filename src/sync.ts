@@ -35,8 +35,12 @@ const SUGGESTED_RETRY_AFTER_MS = 600_000; // 10 min
 const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
-// Mismo criterio de exclusión que el safety net 1 de /scrape (index.ts)
-const TESTER_RE = /\b(tester|decant|muestra|sample)\b|\(t\)/i;
+// Formatos que NO vendemos: el proveedor los lista pero nunca deben entrar al
+// catálogo ni generar reportes de variante nueva. Fuente única de verdad para
+// el sync de precios y para el safety net 1 de /scrape (index.ts).
+// `vial` se agregó tras ver el proveedor publicar "2 ML (Vial)" / "3 ML (Vial)".
+export const TESTER_RE =
+  /\b(tester|decant|decants|muestra|sample|vial|vials|miniatura)\b|\(t\)/i;
 
 // Precio COP máximo razonable (misma constante que safety net 2 de /scrape)
 const COP_MAX_REASONABLE = 6_000_000;
