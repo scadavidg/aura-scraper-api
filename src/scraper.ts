@@ -147,7 +147,10 @@ INSTRUCCIONES:
        → precios[i] = 69000000/100 = 690000  ← el mayor (original)
        → precios_descuento[i] = 62100000/100 = 621000  ← el menor (lo que paga)
    - NUNCA pongas el mismo valor en ambos campos cuando compare_at_price > price.
-   - ⛔ EXCLUSIÓN TOTAL OBLIGATORIA: NO incluyas NINGUNA variante cuyo título contenga 'tester', 'Tester', 'TESTER', 'decant', 'Decant', 'Decants', 'vial', 'Vial', 'VIAL', 'muestra', 'sample' o 'miniatura' — en MAYÚSCULA o minúscula, con o sin paréntesis (ej: '2 ML (Vial)', '3 ML (Vial)', '10 ML (Decants)'). Si las incluyes cometerás un error grave. Solo incluye variantes de volumen real (ej: 50 ML, 100 ML, 200 ML).
+   - ⛔ FORMATO OBLIGATORIO DEL TÍTULO: cada elemento de 'variantes' debe ser EXACTAMENTE 2 o 3 cifras seguidas de 'ML' y nada más (ej: '50 ML', '100 ML', '236 ML'). Si el título del proveedor trae cualquier otra cosa —un calificativo entre paréntesis, un texto pegado, o una sola cifra— esa variante NO va: descártala entera junto con su precio y disponibilidad.
+       * SÍ: '50 ML', '100 ML', '200 ML', '236 ML'
+       * NO: '5 ML (Decant)', '5 ML (Vial)', '75 ML (Tester)', '236 ML Body Spray', '60 ML Body Spray', '5 ML', '5ML', 'Set de regalo', 'Standard'
+     Aplica en MAYÚSCULA o minúscula. Si incluyes una variante que no sea talla limpia cometerás un error grave.
 2. DISPONIBILIDAD: En Shopify busca el campo 'available' (true=Disponible, false=Agotado). En el texto, busca 'Agotado' o botones deshabilitados.
 3. Genera un handle único en minúsculas con guiones.
 4. El campo 'descripcion': extrae literalmente el texto descriptivo del producto que aparece en la página (el párrafo o párrafos que describen el perfume, su historia, sus notas, su personalidad). NO lo inventes. Si no hay descripción visible, déjalo vacío.
