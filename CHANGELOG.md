@@ -23,6 +23,14 @@ Todas las versiones notables de este repo. Formato: SemVer.
   en `www.` marcaba `redirected: true` en cada sync — falso positivo masivo de
   `url_moved` desde el primer run. `final_url` sigue devolviendo la URL real
   (el apex, sin reescribir); solo cambió la comparación.
+- Los **viales** del proveedor ("2 ML (Vial)", "3 ML (Vial)") se ignoran al dar de
+  alta un producto, igual que los tester y decant que ya estaban contemplados.
+- Al dar de alta se **exige talla limpia** (2-3 cifras + ML, con o sin espacio):
+  la lista negra de formatos llegaba tarde a cada invento nuevo del proveedor
+  (Tester → Decant → Vial → Body Spray), así que se invierte el criterio a una
+  whitelist estricta. Se pela el sufijo `/ Standard` que concatena el Shopify del
+  proveedor cuando hay una segunda opción sin variantes reales, para no descartar
+  tallas legítimas; solo ese literal (`100 ML / Tester` sigue siendo inválido).
 
 ## [1.0.1] - 2026-07-24
 
