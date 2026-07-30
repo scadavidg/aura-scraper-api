@@ -185,7 +185,7 @@ INSTRUCCIONES:
    - En Shopify los precios vienen en centavos — SIEMPRE dividir entre 100.
    - 'price' = precio actual que paga el cliente
    - 'compare_at_price' = precio original (si hay descuento)
-   - REGLA CRÍTICA: Excluye CUALQUIER variante con 'decant', 'tester' o 'TESTER'
+   - REGLA CRÍTICA: Excluye CUALQUIER variante con 'decant', 'tester', 'TESTER' o 'vial'/'Vial' (ej: '2 ML (Vial)')
 2. DISPONIBILIDAD: Busca campo 'available' (true=Disponible, false=Agotado)
 3. Genera un handle único en minúsculas con guiones
 4. El campo 'descripcion' déjalo como string vacío
