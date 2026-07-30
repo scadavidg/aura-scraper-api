@@ -15,6 +15,15 @@ Todas las versiones notables de este repo. Formato: SemVer.
   JSON inválido); en `network_error`/`invalid_host` quedan `undefined`. Un
   backend viejo que no los lea sigue funcionando igual.
 
+### Fixed
+- `isSameProductUrl` también ignora un prefijo `www.` al comparar hosts.
+  Validado en vivo contra disfragancias: `www.disfragancias.com` y
+  `disfragancias.com` están ambos en `SYNC_ALLOWED_HOSTS` y el primero
+  301-redirige al segundo, así que cualquier producto con `scraper_source_url`
+  en `www.` marcaba `redirected: true` en cada sync — falso positivo masivo de
+  `url_moved` desde el primer run. `final_url` sigue devolviendo la URL real
+  (el apex, sin reescribir); solo cambió la comparación.
+
 ## [1.0.1] - 2026-07-24
 
 ### Fixed

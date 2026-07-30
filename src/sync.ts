@@ -147,16 +147,28 @@ export function denormalizeShopifyJsUrl(finalUrl: string): string {
 /**
  * Compara dos URLs de producto para decidir si son "la misma", ignorando lo
  * que no cambia el recurso: mayúsculas del host (los hosts no distinguen
- * mayúsculas), query string (ej. `?variant=`), hash, y un `/` final
- * redundante en el path. El path SÍ es sensible a mayúsculas: Shopify trata
- * handles con distinta capitalización como recursos distintos.
+ * mayúsculas), un prefijo `www.` (ver nota abajo), query string (ej.
+ * `?variant=`), hash, y un `/` final redundante en el path. El path SÍ es
+ * sensible a mayúsculas: Shopify trata handles con distinta capitalización
+ * como recursos distintos.
+ *
+ * Por qué se quita `www.`: disfragancias sirve el mismo catálogo en
+ * `disfragancias.com` y `www.disfragancias.com` — ambos están en
+ * `SYNC_ALLOWED_HOSTS` — y `www.` 301-redirige al apex. Validado en vivo: un
+ * `scraper_source_url` guardado con `www.` terminaba SIEMPRE en el apex tras
+ * seguir el redirect, así que sin esta normalización `redirected` daba
+ * true en cada sync para todo producto con `www.` guardado — falso positivo
+ * masivo de `url_moved` desde el primer run, no una detección real de handle
+ * movido. Solo se pela el prefijo literal `www.`, no subdominios arbitrarios
+ * (`shop.d.com` sigue siendo distinto de `d.com`).
  */
 export function isSameProductUrl(a: string, b: string): boolean {
   try {
     const pa = new URL(a);
     const pb = new URL(b);
     const normalizePath = (path: string) => path.replace(/\/+$/, "") || "/";
-    const originOf = (u: URL) => `${u.protocol}//${u.host.toLowerCase()}`;
+    const normalizeHost = (host: string) => host.toLowerCase().replace(/^www\./, "");
+    const originOf = (u: URL) => `${u.protocol}//${normalizeHost(u.host)}`;
     return originOf(pa) === originOf(pb) && normalizePath(pa.pathname) === normalizePath(pb.pathname);
   } catch {
     return a === b;
