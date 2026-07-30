@@ -27,7 +27,7 @@ import {
   timeProviderCall,
 } from "./metrics";
 import { tavily } from "@tavily/core";
-import { syncPrices, TESTER_RE } from "./sync";
+import { syncPrices, isRetailVariantTitle } from "./sync";
 
 dotenv.config();
 
@@ -142,16 +142,20 @@ server.post("/scrape", async (request, reply) => {
       inFlightUrls.delete(url);
     }
 
-    // Safety net 1: strip tester/decant/vial variants the LLM included despite prompt instructions.
+    // Safety net 1: keep ONLY clean sizes (2-3 digits + ML). Whitelist, not
+    // blacklist: the provider keeps inventing qualifiers (Tester → Decant →
+    // Vial → Body Spray) and chasing them one by one always arrives late.
+    // Safe here because this path CREATES the product from scratch; nothing
+    // existing can be dropped by being stricter.
     // Filter is applied to all parallel arrays so indices stay aligned.
     if (Array.isArray(scrapedData.variantes)) {
       const keepIdx: number[] = scrapedData.variantes
-        .map((v: string, i: number) => (TESTER_RE.test(v) ? -1 : i))
+        .map((v: string, i: number) => (isRetailVariantTitle(v) ? i : -1))
         .filter((i: number) => i !== -1);
 
       if (keepIdx.length < scrapedData.variantes.length) {
         const removed = scrapedData.variantes.filter((_: string, i: number) => !keepIdx.includes(i));
-        server.log.info(`[variant-fix] removed tester variants: ${JSON.stringify(removed)}`);
+        server.log.info(`[variant-fix] removed non-size variants: ${JSON.stringify(removed)}`);
         scrapedData.variantes         = keepIdx.map((i: number) => scrapedData.variantes[i]);
         scrapedData.precios           = keepIdx.map((i: number) => (scrapedData.precios ?? [])[i]);
         scrapedData.precios_descuento = keepIdx.map((i: number) => (scrapedData.precios_descuento ?? [])[i] ?? 0);

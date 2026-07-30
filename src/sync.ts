@@ -40,7 +40,28 @@ const USER_AGENT =
 // el sync de precios y para el safety net 1 de /scrape (index.ts).
 // `vial` se agregó tras ver el proveedor publicar "2 ML (Vial)" / "3 ML (Vial)".
 export const TESTER_RE =
-  /\b(tester|decant|decants|muestra|sample|vial|vials|miniatura)\b|\(t\)/i;
+  /\b(tester|decant|decants|muestra|sample|vial|vials|miniatura)\b|body\s*(?:spray|mist)|set\s*de\s*regalo|gift\s*set|\(t\)/i;
+
+/**
+ * Talla VENDIBLE: 2 o 3 cifras + ML, con o sin espacio, cualquier
+ * capitalización, y NADA más. "50 ML" · "50ml" · "100 mL" · "236ML".
+ *
+ * Whitelist: el proveedor estrena calificativos nuevos cada tanto (Tester →
+ * Decant → Vial → Body Spray) y la blacklist de arriba siempre llega tarde.
+ * Se usa en el camino de ALTA de producto (/scrape), donde el título nace de
+ * cero y no hay nada que romper.
+ *
+ * `/ Standard` es la opción de relleno que concatena el Shopify del proveedor
+ * cuando el producto tiene una segunda opción sin variantes reales; se pela
+ * porque no aporta nada. Sólo ese literal: "100 ML / Tester" sigue inválido.
+ */
+const RETAIL_TITLE_RE = /^\d{2,3}\s*ml$/i;
+const SHOPIFY_FILLER_OPTION_RE = /\s*\/\s*standard\s*$/i;
+
+export function isRetailVariantTitle(title: string | null | undefined): boolean {
+  if (!title) return false;
+  return RETAIL_TITLE_RE.test(title.trim().replace(SHOPIFY_FILLER_OPTION_RE, "").trim());
+}
 
 // Precio COP máximo razonable (misma constante que safety net 2 de /scrape)
 const COP_MAX_REASONABLE = 6_000_000;
@@ -215,7 +236,12 @@ function normalizeVariants(rawVariants: any[]): SyncVariant[] {
   const out: SyncVariant[] = [];
   for (const v of rawVariants) {
     const title = String(v?.title ?? "").trim();
-    if (!title || TESTER_RE.test(title)) continue; // excluir tester/decant/muestra
+    // Blacklist (no whitelist) a propósito: acá el resultado alimenta el
+    // MATCHER del backend contra el catálogo ya existente. Descartar un título
+    // que no sea talla limpia ("100 ML EDP") borraría del sync una variante
+    // nuestra viva y la reportaría como variant_missing falso. El gate de talla
+    // estricta vive donde se decide CREAR (backend: isRetailVariantTitle).
+    if (!title || TESTER_RE.test(title)) continue; // excluir tester/decant/vial/body spray
 
     const rawPrice = Number(v?.price);
     if (!Number.isFinite(rawPrice) || rawPrice <= 0) continue;
